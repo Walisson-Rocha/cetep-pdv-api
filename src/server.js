@@ -7,6 +7,8 @@ const connectDB = require('./config/database')
 
 const app = express()
 
+app.set('trust proxy', 1)
+
 connectDB()
 
 // Rate limiting global
