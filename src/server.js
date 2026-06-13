@@ -109,7 +109,11 @@ app.use((err, req, res, next) => {
   res.status(status).json({ mensagem })
 })
 
-const PORT = process.env.PORT || 5000
-app.listen(PORT, () => {
-  console.log(`Cetep PDV API rodando na porta ${PORT}`)
-})
+if (require.main === module) {
+  const PORT = process.env.PORT || 5000
+  app.listen(PORT, () => {
+    console.log(`Cetep PDV API rodando na porta ${PORT}`)
+  })
+}
+
+module.exports = app
