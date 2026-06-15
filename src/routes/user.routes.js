@@ -1,15 +1,49 @@
 const express = require('express')
 const router = express.Router()
+const bcrypt = require('bcryptjs')
 const User = require('../models/User')
 const Log = require('../models/Log')
 const { protect, authorize } = require('../middleware/auth.middleware')
 
 router.use(protect)
 
+const CAMPOS_ENDERECO = ['cep', 'logradouro', 'numero', 'bairro', 'cidade', 'estado']
+const CAMPOS_EDITAVEIS = [
+  'nome', 'email', 'perfil', 'ativo', 'comissao',
+  'telefone', 'whatsapp',
+  'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'estado',
+  'observacao', 'dataAdmissao', 'dataDesligamento',
+]
+
+function validarEndereco(body) {
+  const temAlgum = CAMPOS_ENDERECO.some(c => body[c]?.trim())
+  if (!temAlgum) return []
+  return CAMPOS_ENDERECO
+    .filter(c => !body[c]?.trim())
+    .map(c => `Campo de endereço obrigatório: ${c}`)
+}
+
 router.get('/', authorize('admin'), async (req, res) => {
   try {
-    const usuarios = await User.find().sort({ nome: 1 })
-    res.json({ usuarios })
+    if (req.query.all === 'true') {
+      const usuarios = await User.find().sort({ nome: 1 })
+      return res.json({ usuarios })
+    }
+    const page = Math.max(1, parseInt(req.query.page) || 1)
+    const limit = Math.min(50, parseInt(req.query.limit) || 10)
+    const filtro = {}
+    if (req.query.perfil) filtro.perfil = req.query.perfil
+
+    const [total, usuarios, perfilAgg] = await Promise.all([
+      User.countDocuments(filtro),
+      User.find(filtro).sort({ nome: 1 }).skip((page - 1) * limit).limit(limit),
+      User.aggregate([{ $group: { _id: '$perfil', count: { $sum: 1 } } }]),
+    ])
+
+    const counts = Object.fromEntries(perfilAgg.map(p => [p._id, p.count]))
+    const totalAll = Object.values(counts).reduce((a, b) => a + b, 0)
+
+    res.json({ usuarios, total, totalAll, totalPages: Math.ceil(total / limit) || 1, page, counts })
   } catch (error) {
     console.error('Erro ao buscar usuários:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar usuários' })
@@ -20,23 +54,47 @@ router.post('/', authorize('admin'), async (req, res) => {
   try {
     const { nome, email, senha, perfil } = req.body
     if (!nome || !email || !senha)
-      return res.status(400).json({ mensagem: 'Nome, email e senha são obrigatórios' })
+      return res.status(400).json({ mensagem: 'Nome, e-mail e senha são obrigatórios' })
     if (senha.length < 6)
       return res.status(400).json({ mensagem: 'Senha deve ter pelo menos 6 caracteres' })
+
+    if (!req.body.telefone?.trim() && !req.body.whatsapp?.trim())
+      return res.status(400).json({ mensagem: 'Informe ao menos Telefone 1 ou WhatsApp' })
+
+    const errosEnd = validarEndereco(req.body)
+    if (errosEnd.length) return res.status(400).json({ mensagem: errosEnd[0] })
+
     const perfisValidos = ['admin', 'gerente', 'caixa', 'estoquista', 'colaborador']
     if (perfil && !perfisValidos.includes(perfil))
       return res.status(400).json({ mensagem: 'Perfil inválido' })
-    const user = await User.create({ nome, email, senha, perfil: perfil || 'caixa' })
+
+    const payload = {
+      nome, email, senha,
+      perfil: perfil || 'caixa',
+      comissao: req.body.comissao ?? 0,
+      telefone: req.body.telefone || '',
+      whatsapp: req.body.whatsapp || '',
+      cep: req.body.cep || '', logradouro: req.body.logradouro || '',
+      numero: req.body.numero || '', complemento: req.body.complemento || '',
+      bairro: req.body.bairro || '', cidade: req.body.cidade || '',
+      estado: req.body.estado || '',
+      observacao: req.body.observacao || '',
+      dataAdmissao: req.body.dataAdmissao || undefined,
+      dataDesligamento: req.body.dataDesligamento || undefined,
+      ativo: req.body.ativo !== undefined ? req.body.ativo : true,
+    }
+
+    const user = await User.create(payload)
     await Log.create({
       usuario: req.user._id, nomeUsuario: req.user.nome,
       acao: 'usuario_criado',
       detalhes: `Usuário: ${user.nome} (${user.perfil})`,
-      referencia: user._id
+      referencia: user._id,
     })
     res.status(201).json({ usuario: user })
   } catch (error) {
     if (error.code === 11000)
-      return res.status(400).json({ mensagem: 'Email já cadastrado' })
+      return res.status(400).json({ mensagem: 'E-mail já cadastrado' })
     console.error('Erro ao criar usuário:', error)
     res.status(500).json({ mensagem: 'Erro ao criar usuário' })
   }
@@ -44,24 +102,38 @@ router.post('/', authorize('admin'), async (req, res) => {
 
 router.put('/:id', authorize('admin'), async (req, res) => {
   try {
-    const { nome, email, perfil, ativo } = req.body
+    const body = req.body
     const perfisValidos = ['admin', 'gerente', 'caixa', 'estoquista', 'colaborador']
-    if (perfil && !perfisValidos.includes(perfil))
+    if (body.perfil && !perfisValidos.includes(body.perfil))
       return res.status(400).json({ mensagem: 'Perfil inválido' })
+
+    const errosEnd = validarEndereco(body)
+    if (errosEnd.length) return res.status(400).json({ mensagem: errosEnd[0] })
+
+    const update = {}
+    for (const campo of CAMPOS_EDITAVEIS) {
+      if (body[campo] !== undefined) update[campo] = body[campo]
+    }
+    // Senha requer hash manual (findByIdAndUpdate ignora pre-save hook)
+    if (body.senha && body.senha.length >= 6) {
+      update.senha = await bcrypt.hash(body.senha, 12)
+    }
+
     const user = await User.findByIdAndUpdate(
       req.params.id,
-      { nome, email, perfil, ativo },
+      { $set: update },
       { new: true, runValidators: true }
     )
     if (!user) return res.status(404).json({ mensagem: 'Usuário não encontrado' })
     res.json({ usuario: user })
   } catch (error) {
+    if (error.code === 11000)
+      return res.status(400).json({ mensagem: 'E-mail já cadastrado' })
     console.error('Erro ao atualizar usuário:', error)
     res.status(500).json({ mensagem: 'Erro ao atualizar usuário' })
   }
 })
 
-// Soft-delete: desativa o usuário sem apagar dados
 router.delete('/:id', authorize('admin'), async (req, res) => {
   try {
     if (req.params.id === req.user._id.toString())
@@ -76,7 +148,7 @@ router.delete('/:id', authorize('admin'), async (req, res) => {
       usuario: req.user._id, nomeUsuario: req.user.nome,
       acao: 'usuario_desativado',
       detalhes: `Usuário desativado: ${user.nome}`,
-      referencia: user._id
+      referencia: user._id,
     })
     res.json({ mensagem: 'Usuário desativado', usuario: user })
   } catch (error) {

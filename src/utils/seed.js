@@ -69,11 +69,51 @@ const seed = async () => {
 
   // ── FORNECEDORES ──────────────────────────────────────────────────────────
   await Fornecedor.collection.insertMany([
-    { _id: oid(), nome: 'Distribuidora Central',  cnpj: '12.345.678/0001-90', telefone: '(61) 3333-1111', email: 'vendas@distcentral.com',    contato: 'Roberto Lima',    ativo: true, createdAt: dt(1), updatedAt: dt(1) },
-    { _id: oid(), nome: 'Papelaria Atacado BR',   cnpj: '98.765.432/0001-00', telefone: '(61) 3333-2222', email: 'contato@papelatacado.com',  contato: 'Sandra Moura',    ativo: true, createdAt: dt(1), updatedAt: dt(1) },
-    { _id: oid(), nome: 'Têxtil Soares Ltda',     cnpj: '11.222.333/0001-44', telefone: '(61) 3333-3333', email: 'comercial@textilsoares.com', contato: 'Paulo Soares',    ativo: true, createdAt: dt(1), updatedAt: dt(1) },
-    { _id: oid(), nome: 'Alimentos & Cia',        cnpj: '55.666.777/0001-88', telefone: '(61) 3444-5555', email: 'pedidos@alimentoecia.com',   contato: 'Claudia Torres',  ativo: true, createdAt: dt(2), updatedAt: dt(2) },
-    { _id: oid(), nome: 'TechSupply Brasil',       cnpj: '77.888.999/0001-22', telefone: '(61) 3555-6666', email: 'vendas@techsupply.com',     contato: 'Rafael Nunes',    ativo: true, createdAt: dt(2), updatedAt: dt(2) },
+    {
+      _id: oid(), nome: 'Distribuidora Central', cnpj: '12.345.678/0001-90',
+      telefone: '(61) 3333-1111', whatsapp: '(61) 98111-1111',
+      email: 'vendas@distcentral.com', contato: 'Roberto Lima',
+      cep: '70070-010', logradouro: 'SCS Quadra 2', numero: '12', complemento: 'Bloco C, Sala 301',
+      bairro: 'Asa Sul', cidade: 'Brasília', estado: 'DF',
+      observacao: 'Principal fornecedor de mercearia e secos. Pedido mínimo R$ 500. Entrega às terças e quintas.',
+      ativo: true, createdAt: dt(1), updatedAt: dt(1),
+    },
+    {
+      _id: oid(), nome: 'Papelaria Atacado BR', cnpj: '98.765.432/0001-00',
+      telefone: '(61) 3333-2222', whatsapp: '(61) 98222-2222',
+      email: 'contato@papelatacado.com', contato: 'Sandra Moura',
+      cep: '72015-900', logradouro: 'QNN 38', numero: '5', complemento: 'Loja 2',
+      bairro: 'Ceilândia Norte', cidade: 'Brasília', estado: 'DF',
+      observacao: 'Fornece embalagens, sacolas e material de escritório. Prazo de entrega 2 dias úteis.',
+      ativo: true, createdAt: dt(1), updatedAt: dt(1),
+    },
+    {
+      _id: oid(), nome: 'Têxtil Soares Ltda', cnpj: '11.222.333/0001-44',
+      telefone: '(61) 3333-3333', whatsapp: '(61) 98333-3333',
+      email: 'comercial@textilsoares.com', contato: 'Paulo Soares',
+      cep: '72220-260', logradouro: 'QNM 12', numero: '8', complemento: '',
+      bairro: 'Ceilândia Sul', cidade: 'Brasília', estado: 'DF',
+      observacao: 'Uniforme e tecidos para uso interno. Negociação direta com Paulo. Pagamento 30 dias.',
+      ativo: true, createdAt: dt(1), updatedAt: dt(1),
+    },
+    {
+      _id: oid(), nome: 'Alimentos & Cia', cnpj: '55.666.777/0001-88',
+      telefone: '(61) 3444-5555', whatsapp: '(61) 98444-5555',
+      email: 'pedidos@alimentoecia.com', contato: 'Claudia Torres',
+      cep: '71503-507', logradouro: 'Av. Hélio Prates', numero: '1420', complemento: 'Galpão 3',
+      bairro: 'Taguatinga Norte', cidade: 'Brasília', estado: 'DF',
+      observacao: 'Fornecedor de frios, laticínios e alimentos perecíveis. Entrega diária até 8h. Exige pedido até 18h do dia anterior.',
+      ativo: true, createdAt: dt(2), updatedAt: dt(2),
+    },
+    {
+      _id: oid(), nome: 'TechSupply Brasil', cnpj: '77.888.999/0001-22',
+      telefone: '(61) 3555-6666', whatsapp: '(61) 98555-6666',
+      email: 'vendas@techsupply.com', contato: 'Rafael Nunes',
+      cep: '70714-900', logradouro: 'SAAN Quadra 1', numero: '200', complemento: 'Bloco A',
+      bairro: 'Setor de Armazenagem e Abastecimento Norte', cidade: 'Brasília', estado: 'DF',
+      observacao: 'Equipamentos de informática, impressoras e suprimentos. Garantia de 12 meses. Suporte pelo WhatsApp.',
+      ativo: true, createdAt: dt(2), updatedAt: dt(2),
+    },
   ])
   console.log('🚚 5 fornecedores criados')
 
