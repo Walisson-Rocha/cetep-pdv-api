@@ -37,21 +37,28 @@ router.get('/minhas', async (req, res) => {
 
 router.use(authorize('admin', 'gerente'))
 
-// GET /retiradas?mes=202605&colaboradorId=xxx
+// GET /retiradas?mes=202605&colaboradorId=xxx&page=1&limit=10
 router.get('/', async (req, res) => {
   try {
     const mes = req.query.mes ? parseInt(req.query.mes) : parseInt(
       new Date().getFullYear().toString() + String(new Date().getMonth() + 1).padStart(2, '0')
     )
+    const page = Math.max(1, parseInt(req.query.page) || 1)
+    const limit = Math.min(50, parseInt(req.query.limit) || 10)
     const filtro = { mes }
     if (req.query.colaboradorId) filtro.colaborador = req.query.colaboradorId
 
-    const retiradas = await Retirada.find(filtro)
-      .populate('colaborador', 'nome email perfil')
-      .populate('registradaPor', 'nome')
-      .sort({ createdAt: -1 })
+    const [total, retiradas] = await Promise.all([
+      Retirada.countDocuments(filtro),
+      Retirada.find(filtro)
+        .populate('colaborador', 'nome email perfil')
+        .populate('registradaPor', 'nome')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+    ])
 
-    res.json({ retiradas, mes })
+    res.json({ retiradas, total, totalPages: Math.ceil(total / limit) || 1, page, mes })
   } catch (error) {
     console.error('Erro ao listar retiradas:', error)
     res.status(500).json({ mensagem: 'Erro ao listar retiradas' })

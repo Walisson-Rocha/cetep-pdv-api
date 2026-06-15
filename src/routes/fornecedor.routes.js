@@ -5,6 +5,48 @@ const { protect, authorize } = require('../middleware/auth.middleware')
 
 router.use(protect)
 
+const CAMPOS_ENDERECO = ['cep', 'logradouro', 'numero', 'bairro', 'cidade', 'estado']
+
+function validar(body) {
+  const { nome, telefone, whatsapp } = body
+  const erros = []
+
+  if (!nome?.trim()) erros.push('Nome é obrigatório')
+
+  if (!telefone?.trim() && !whatsapp?.trim())
+    erros.push('Informe ao menos Telefone 1 ou WhatsApp')
+
+  // Se qualquer campo de endereço foi enviado, todos os obrigatórios devem estar preenchidos
+  const temAlgumEndereco = CAMPOS_ENDERECO.some(c => body[c]?.trim())
+  if (temAlgumEndereco) {
+    CAMPOS_ENDERECO.forEach(campo => {
+      if (!body[campo]?.trim())
+        erros.push(`Campo de endereço obrigatório: ${campo}`)
+    })
+  }
+
+  return erros
+}
+
+function extrairCampos(body) {
+  return {
+    nome:        body.nome,
+    cnpj:        body.cnpj,
+    telefone:    body.telefone,
+    whatsapp:    body.whatsapp,
+    email:       body.email,
+    contato:     body.contato,
+    cep:         body.cep,
+    logradouro:  body.logradouro,
+    numero:      body.numero,
+    complemento: body.complemento,
+    bairro:      body.bairro,
+    cidade:      body.cidade,
+    estado:      body.estado,
+    observacao:  body.observacao,
+  }
+}
+
 router.get('/', async (req, res) => {
   try {
     const fornecedores = await Fornecedor.find({ ativo: true }).sort({ nome: 1 })
@@ -17,9 +59,10 @@ router.get('/', async (req, res) => {
 
 router.post('/', authorize('admin', 'gerente'), async (req, res) => {
   try {
-    const { nome, cnpj, telefone, email, contato, observacoes } = req.body
-    if (!nome) return res.status(400).json({ mensagem: 'Nome é obrigatório' })
-    const f = await Fornecedor.create({ nome, cnpj, telefone, email, contato, observacoes })
+    const erros = validar(req.body)
+    if (erros.length) return res.status(400).json({ mensagem: erros[0], erros })
+
+    const f = await Fornecedor.create(extrairCampos(req.body))
     res.status(201).json({ fornecedor: f })
   } catch (error) {
     console.error('Erro ao criar fornecedor:', error)
@@ -29,10 +72,19 @@ router.post('/', authorize('admin', 'gerente'), async (req, res) => {
 
 router.put('/:id', authorize('admin', 'gerente'), async (req, res) => {
   try {
-    const { nome, cnpj, telefone, email, contato, observacoes, ativo } = req.body
+    if (req.body.ativo === false) {
+      // Desativação rápida — não revalida campos
+      const f = await Fornecedor.findByIdAndUpdate(req.params.id, { ativo: false }, { new: true })
+      if (!f) return res.status(404).json({ mensagem: 'Fornecedor não encontrado' })
+      return res.json({ fornecedor: f })
+    }
+
+    const erros = validar(req.body)
+    if (erros.length) return res.status(400).json({ mensagem: erros[0], erros })
+
     const f = await Fornecedor.findByIdAndUpdate(
       req.params.id,
-      { nome, cnpj, telefone, email, contato, observacoes, ativo },
+      { ...extrairCampos(req.body), ativo: req.body.ativo ?? true },
       { new: true, runValidators: true }
     )
     if (!f) return res.status(404).json({ mensagem: 'Fornecedor não encontrado' })
