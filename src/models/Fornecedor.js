@@ -7,6 +7,7 @@ const fornecedorSchema = new mongoose.Schema({
   whatsapp:    { type: String, trim: true },
   email:       { type: String, lowercase: true, trim: true },
   contato:     { type: String, trim: true },
+  segmento:    { type: String, trim: true },
   // Endereço (opcional; quando enviado, campos obrigatórios são validados na rota)
   cep:         { type: String, trim: true },
   logradouro:  { type: String, trim: true },

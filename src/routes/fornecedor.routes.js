@@ -36,6 +36,7 @@ function extrairCampos(body) {
     whatsapp:    body.whatsapp,
     email:       body.email,
     contato:     body.contato,
+    segmento:    body.segmento,
     cep:         body.cep,
     logradouro:  body.logradouro,
     numero:      body.numero,
