@@ -5,12 +5,15 @@ const MovimentoEstoque = require('../models/MovimentoEstoque')
 const Cliente = require('../models/Cliente')
 const Retirada = require('../models/Retirada')
 const Log = require('../models/Log')
+const Configuracao = require('../models/Configuracao')
 
 const registrar = async (req, res) => {
   try {
-    const { itens, formaPagamento, clienteId, colaboradorId, desconto = 0, troco = 0 } = req.body
+    const { itens, formaPagamento, clienteId, colaboradorId, desconto = 0, troco = 0, pontosResgatados = 0 } = req.body
     const caixa = await Caixa.findOne({ status: 'aberto' })
     if (!caixa) return res.status(400).json({ mensagem: 'Nenhum caixa aberto.' })
+    const config = await Configuracao.findOne().lean()
+    const permitirEstoqueNegativo = config?.estoqueNegativo ?? false
     let subtotal = 0
     const itensCompletos = []
     for (const item of itens) {
@@ -18,7 +21,7 @@ const registrar = async (req, res) => {
       if (!produto || !produto.ativo) {
         return res.status(400).json({ mensagem: `Produto não encontrado: ${item.produtoId}` })
       }
-      if (produto.estoque < item.quantidade) {
+      if (!permitirEstoqueNegativo && produto.estoque < item.quantidade) {
         return res.status(400).json({
           mensagem: `Estoque insuficiente para ${produto.nome}`,
           estoqueDisponivel: produto.estoque,
@@ -81,6 +84,18 @@ const registrar = async (req, res) => {
     }
     if (formaPagamento === 'fiado' && clienteId) {
       await Cliente.findByIdAndUpdate(clienteId, { $inc: { saldoFiado: total } })
+    }
+
+    // Fidelidade: debita pontos resgatados e acumula novos
+    if (clienteId && config?.fidelidade?.ativo) {
+      const pontosPorReal = config.fidelidade.pontosPorReal ?? 1
+      const pontosGanhos = Math.floor(total * pontosPorReal)
+      const cliAtual = await Cliente.findById(clienteId)
+      if (cliAtual) {
+        const pontosDebitar = Math.min(pontosResgatados, cliAtual.pontos ?? 0)
+        const novoSaldo = Math.max(0, (cliAtual.pontos ?? 0) - pontosDebitar + pontosGanhos)
+        await Cliente.findByIdAndUpdate(clienteId, { pontos: novoSaldo })
+      }
     }
     // Venda descontada do colaborador — cria Retirada para aparecer na folha
     // Estoque já foi deduzido pela venda acima; Retirada.create direto (sem rota) não deduz novamente

@@ -1,6 +1,7 @@
 const express = require('express')
 const router = express.Router()
 const Cliente = require('../models/Cliente')
+const Configuracao = require('../models/Configuracao')
 const Log = require('../models/Log')
 const { protect, authorize } = require('../middleware/auth.middleware')
 
@@ -45,10 +46,12 @@ router.post('/', authorize('admin', 'gerente'), async (req, res) => {
 
 router.put('/:id', authorize('admin', 'gerente'), async (req, res) => {
   try {
-    const { nome, tipo, cpf, cnpj, dataNascimento, telefone, whatsapp, email, endereco, limiteCredito, observacoes, ativo } = req.body
+    const { nome, tipo, cpf, cnpj, dataNascimento, telefone, whatsapp, email, endereco, limiteCredito, observacoes, ativo, pontos } = req.body
+    const update = { nome, tipo, cpf, cnpj, dataNascimento, telefone, whatsapp, email, endereco, limiteCredito, observacoes, ativo }
+    if (pontos !== undefined) update.pontos = Math.max(0, parseInt(pontos) || 0)
     const cliente = await Cliente.findByIdAndUpdate(
       req.params.id,
-      { nome, tipo, cpf, cnpj, dataNascimento, telefone, whatsapp, email, endereco, limiteCredito, observacoes, ativo },
+      update,
       { new: true, runValidators: true }
     )
     if (!cliente) return res.status(404).json({ mensagem: 'Cliente não encontrado' })
@@ -56,6 +59,28 @@ router.put('/:id', authorize('admin', 'gerente'), async (req, res) => {
   } catch (error) {
     console.error('Erro ao atualizar cliente:', error)
     res.status(500).json({ mensagem: 'Erro ao atualizar cliente' })
+  }
+})
+
+router.get('/:id/pontos', async (req, res) => {
+  try {
+    const config = await Configuracao.findOne().lean()
+    const fid = config?.fidelidade
+    if (!fid?.ativo) return res.json({ fidelidadeAtiva: false })
+    const cliente = await Cliente.findById(req.params.id).lean()
+    if (!cliente) return res.status(404).json({ mensagem: 'Cliente não encontrado' })
+    const valorPorPonto = fid.valorPorPonto ?? 0.01
+    const descontoMaximo = parseFloat(((cliente.pontos || 0) * valorPorPonto).toFixed(2))
+    res.json({
+      fidelidadeAtiva: true,
+      pontos: cliente.pontos || 0,
+      valorPorPonto,
+      minimoResgate: fid.minimoResgate,
+      descontoMaximo,
+    })
+  } catch (error) {
+    console.error('Erro ao buscar pontos:', error)
+    res.status(500).json({ mensagem: 'Erro ao buscar pontos' })
   }
 })
 

@@ -12,6 +12,7 @@ const clienteSchema = new mongoose.Schema({
   endereco: { type: String, trim: true },
   limiteCredito: { type: Number, default: 0 },
   saldoFiado: { type: Number, default: 0 },
+  pontos: { type: Number, default: 0 },
   ativo: { type: Boolean, default: true },
   observacoes: { type: String }
 }, {

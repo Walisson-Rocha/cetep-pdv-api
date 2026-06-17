@@ -18,10 +18,10 @@ router.get('/', async (req, res) => {
 
 router.put('/', authorize('admin'), async (req, res) => {
   try {
-    const { nomeLoja, cnpj, endereco, telefone, whatsapp, chavePix, metaMensal, notificacoes } = req.body
+    const { nomeLoja, cnpj, endereco, telefone, whatsapp, chavePix, metaMensal, notificacoes, estoqueNegativo, emitirNFCe, emitirNFe } = req.body
     const config = await Configuracao.findOneAndUpdate(
       {},
-      { $set: { nomeLoja, cnpj, endereco, telefone, whatsapp, chavePix, metaMensal, notificacoes } },
+      { $set: { nomeLoja, cnpj, endereco, telefone, whatsapp, chavePix, metaMensal, notificacoes, estoqueNegativo, emitirNFCe, emitirNFe } },
       { new: true, upsert: true, runValidators: true }
     )
     res.json({ config, mensagem: 'Configurações salvas com sucesso!' })
