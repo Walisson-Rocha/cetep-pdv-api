@@ -23,9 +23,13 @@ const vendaSchema = new mongoose.Schema({
   total: { type: Number, required: true },
   formaPagamento: {
     type: String,
-    enum: ['dinheiro', 'pix', 'debito', 'credito', 'fiado', 'boleto', 'colaborador'],
+    enum: ['dinheiro', 'pix', 'debito', 'credito', 'fiado', 'boleto', 'colaborador', 'misto'],
     required: true
   },
+  formasPagamento: [{
+    metodo: { type: String },
+    valor: { type: Number }
+  }],
   troco: { type: Number, default: 0 },
   cliente: { type: mongoose.Schema.Types.ObjectId, ref: 'Cliente', default: null },
   colaborador: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

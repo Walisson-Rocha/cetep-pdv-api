@@ -9,18 +9,20 @@ const Configuracao = require('../models/Configuracao')
 
 const registrar = async (req, res) => {
   try {
-    const { itens, formaPagamento, clienteId, colaboradorId, desconto = 0, troco = 0, pontosResgatados = 0 } = req.body
+    const { itens, formaPagamento, formasPagamento = [], clienteId, colaboradorId, desconto = 0, troco = 0, pontosResgatados = 0 } = req.body
     const caixa = await Caixa.findOne({ status: 'aberto' })
     if (!caixa) return res.status(400).json({ mensagem: 'Nenhum caixa aberto.' })
     const config = await Configuracao.findOne().lean()
     const permitirEstoqueNegativo = config?.estoqueNegativo ?? false
     let subtotal = 0
     const itensCompletos = []
+    const produtoMap = new Map()
     for (const item of itens) {
       const produto = await Produto.findById(item.produtoId)
       if (!produto || !produto.ativo) {
         return res.status(400).json({ mensagem: `Produto não encontrado: ${item.produtoId}` })
       }
+      produtoMap.set(produto._id.toString(), produto)
       if (!permitirEstoqueNegativo && produto.estoque < item.quantidade) {
         return res.status(400).json({
           mensagem: `Estoque insuficiente para ${produto.nome}`,
@@ -63,14 +65,14 @@ const registrar = async (req, res) => {
 
     const venda = await Venda.create({
       itens: itensCompletos, subtotal, desconto, total,
-      formaPagamento, troco,
+      formaPagamento, formasPagamento, troco,
       cliente: clienteId || null,
       colaborador: colaboradorId || null,
       caixa: caixa._id,
       vendedor: req.user._id
     })
     for (const item of itensCompletos) {
-      const produto = await Produto.findById(item.produto)
+      const produto = produtoMap.get(item.produto.toString())
       const estoqueAnterior = produto.estoque
       produto.estoque -= item.quantidade
       await produto.save()
@@ -82,8 +84,13 @@ const registrar = async (req, res) => {
         venda: venda._id, responsavel: req.user._id
       })
     }
-    if (formaPagamento === 'fiado' && clienteId) {
-      await Cliente.findByIdAndUpdate(clienteId, { $inc: { saldoFiado: total } })
+    if (clienteId && (formaPagamento === 'fiado' || formaPagamento === 'misto')) {
+      const valorFiado = formaPagamento === 'misto'
+        ? (formasPagamento.find(p => p.metodo === 'fiado')?.valor || 0)
+        : total
+      if (valorFiado > 0) {
+        await Cliente.findByIdAndUpdate(clienteId, { $inc: { saldoFiado: valorFiado } })
+      }
     }
 
     // Fidelidade: debita pontos resgatados e acumula novos
