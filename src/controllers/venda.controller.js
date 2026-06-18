@@ -10,8 +10,8 @@ const Configuracao = require('../models/Configuracao')
 const registrar = async (req, res) => {
   try {
     const { itens, formaPagamento, formasPagamento = [], clienteId, colaboradorId, desconto = 0, troco = 0, pontosResgatados = 0 } = req.body
-    const caixa = await Caixa.findOne({ status: 'aberto' })
-    if (!caixa) return res.status(400).json({ mensagem: 'Nenhum caixa aberto.' })
+    const caixa = await Caixa.findOne({ status: 'aberto', abertoPor: req.user._id })
+    if (!caixa) return res.status(400).json({ mensagem: 'Você não tem um caixa aberto.' })
     const config = await Configuracao.findOne().lean()
     const permitirEstoqueNegativo = config?.estoqueNegativo ?? false
     let subtotal = 0

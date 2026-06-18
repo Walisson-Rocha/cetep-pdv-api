@@ -51,13 +51,13 @@ const resumo = async (req, res) => {
 
     const agora = new Date()
 
-    const [vendasHoje, vendasOntem, vendasMes, vendas7dias, caixaAberto, clientesComFiado, despesasHoje, config, produtosAgg, rankingAgg] =
+    const [vendasHoje, vendasOntem, vendasMes, vendas7dias, caixasAbertas, clientesComFiado, despesasHoje, config, produtosAgg, rankingAgg] =
       await Promise.all([
         Venda.find({ createdAt: { $gte: inicioHoje,  $lte: fimHoje  }, cancelada: false }),
         Venda.find({ createdAt: { $gte: inicioOntem, $lte: fimOntem }, cancelada: false }),
         Venda.find({ createdAt: { $gte: inicioMes,   $lte: fimMes   }, cancelada: false }),
         Venda.find({ createdAt: { $gte: brt7diasAtras }, cancelada: false }),
-        Caixa.findOne({ status: 'aberto' }).populate('abertoPor', 'nome'),
+        Caixa.find({ status: 'aberto' }).populate('abertoPor', 'nome'),
         Cliente.find({ saldoFiado: { $gt: 0 } }),
         Despesa.find({ createdAt: { $gte: inicioHoje, $lte: fimHoje } }),
         Configuracao.findOne(),
@@ -190,12 +190,14 @@ const resumo = async (req, res) => {
         totalProdutos: stats.total,
         produtosVencendo: stats.produtosVencendo || [],
       },
-      caixa: caixaAberto ? {
+      caixa: caixasAbertas.length > 0 ? {
         aberto: true,
-        abertoEm: caixaAberto.abertoEm,
-        abertoPor: caixaAberto.abertoPor?.nome,
-        saldoInicial: caixaAberto.saldoInicial,
-        totalVendas: caixaAberto.totalVendas
+        quantidade: caixasAbertas.length,
+        abertoEm: caixasAbertas[0].abertoEm,
+        abertoPor: caixasAbertas.length === 1 ? caixasAbertas[0].abertoPor?.nome : `${caixasAbertas.length} operadores`,
+        saldoInicial: caixasAbertas.reduce((acc, c) => acc + c.saldoInicial, 0),
+        totalVendas: caixasAbertas.reduce((acc, c) => acc + c.totalVendas, 0),
+        lista: caixasAbertas.map(c => ({ id: c._id, abertoPor: c.abertoPor?.nome, abertoEm: c.abertoEm, totalVendas: c.totalVendas }))
       } : { aberto: false },
       financeiro: {
         lucroEstimadoHoje: totalVendasHoje - totalDespesasHoje,

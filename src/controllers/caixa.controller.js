@@ -3,8 +3,8 @@ const Log = require('../models/Log')
 
 const abrirCaixa = async (req, res) => {
   try {
-    const caixaAberto = await Caixa.findOne({ status: 'aberto' })
-    if (caixaAberto) return res.status(400).json({ mensagem: 'Já existe um caixa aberto' })
+    const caixaAberto = await Caixa.findOne({ status: 'aberto', abertoPor: req.user._id })
+    if (caixaAberto) return res.status(400).json({ mensagem: 'Você já tem um caixa aberto' })
     const { saldoInicial = 0 } = req.body
     const caixa = await Caixa.create({ abertoPor: req.user._id, saldoInicial })
     await Log.create({
@@ -23,8 +23,8 @@ const abrirCaixa = async (req, res) => {
 const fecharCaixa = async (req, res) => {
   try {
     const { saldoContado } = req.body
-    const caixa = await Caixa.findOne({ status: 'aberto' })
-    if (!caixa) return res.status(400).json({ mensagem: 'Nenhum caixa aberto' })
+    const caixa = await Caixa.findOne({ _id: req.params.id, status: 'aberto' })
+    if (!caixa) return res.status(400).json({ mensagem: 'Caixa não encontrado ou já fechado' })
     const totalSangrias = caixa.sangrias.reduce((acc, s) => acc + s.valor, 0)
     const saldoFinal = caixa.saldoInicial + caixa.totalVendas - totalSangrias
     const diferenca = saldoContado - saldoFinal
@@ -51,8 +51,8 @@ const fecharCaixa = async (req, res) => {
 const registrarSangria = async (req, res) => {
   try {
     const { valor, motivo } = req.body
-    const caixa = await Caixa.findOne({ status: 'aberto' })
-    if (!caixa) return res.status(400).json({ mensagem: 'Nenhum caixa aberto' })
+    const caixa = await Caixa.findOne({ status: 'aberto', abertoPor: req.user._id })
+    if (!caixa) return res.status(400).json({ mensagem: 'Você não tem um caixa aberto' })
     caixa.sangrias.push({ valor, motivo, registradoPor: req.user._id })
     await caixa.save()
     await Log.create({
@@ -70,11 +70,21 @@ const registrarSangria = async (req, res) => {
 
 const caixaAtual = async (req, res) => {
   try {
-    const caixa = await Caixa.findOne({ status: 'aberto' }).populate('abertoPor', 'nome')
+    const caixa = await Caixa.findOne({ status: 'aberto', abertoPor: req.user._id }).populate('abertoPor', 'nome')
     res.json({ caixa: caixa || null })
   } catch (error) {
     console.error('Erro ao buscar caixa:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar caixa' })
+  }
+}
+
+const listarAbertos = async (req, res) => {
+  try {
+    const caixas = await Caixa.find({ status: 'aberto' }).populate('abertoPor', 'nome perfil').sort({ abertoEm: 1 })
+    res.json({ caixas })
+  } catch (error) {
+    console.error('Erro ao listar caixas abertos:', error)
+    res.status(500).json({ mensagem: 'Erro ao listar caixas abertos' })
   }
 }
 
@@ -95,4 +105,4 @@ const listarHistorico = async (req, res) => {
   }
 }
 
-module.exports = { abrirCaixa, fecharCaixa, registrarSangria, caixaAtual, listarHistorico }
+module.exports = { abrirCaixa, fecharCaixa, registrarSangria, caixaAtual, listarAbertos, listarHistorico }
