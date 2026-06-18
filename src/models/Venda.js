@@ -9,7 +9,7 @@ const Counter = mongoose.model('Counter', counterSchema)
 const itemVendaSchema = new mongoose.Schema({
   produto: { type: mongoose.Schema.Types.ObjectId, ref: 'Produto', required: true },
   nomeProduto: { type: String, required: true },
-  quantidade: { type: Number, required: true, min: 1 },
+  quantidade: { type: Number, required: true, min: 0.001 },
   precoUnitario: { type: Number, required: true },
   desconto: { type: Number, default: 0 },
   subtotal: { type: Number, required: true }

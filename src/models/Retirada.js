@@ -3,7 +3,7 @@ const mongoose = require('mongoose')
 const itemRetiradaSchema = new mongoose.Schema({
   produto: { type: mongoose.Schema.Types.ObjectId, ref: 'Produto', required: true },
   nomeProduto: { type: String, required: true },
-  quantidade: { type: Number, required: true, min: 1 },
+  quantidade: { type: Number, required: true, min: 0.001 },
   precoUnitario: { type: Number, required: true },
   subtotal: { type: Number, required: true },
 }, { _id: false })
