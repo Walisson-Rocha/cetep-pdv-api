@@ -1,3 +1,4 @@
+const logger = require('../config/logger')
 const express = require('express')
 const router = express.Router()
 const Fornecedor = require('../models/Fornecedor')
@@ -53,7 +54,7 @@ router.get('/', async (req, res) => {
     const fornecedores = await Fornecedor.find({ ativo: true }).sort({ nome: 1 })
     res.json({ fornecedores })
   } catch (error) {
-    console.error('Erro ao buscar fornecedores:', error)
+    logger.error('Erro ao buscar fornecedores:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar fornecedores' })
   }
 })
@@ -66,7 +67,7 @@ router.post('/', authorize('admin', 'gerente'), async (req, res) => {
     const f = await Fornecedor.create(extrairCampos(req.body))
     res.status(201).json({ fornecedor: f })
   } catch (error) {
-    console.error('Erro ao criar fornecedor:', error)
+    logger.error('Erro ao criar fornecedor:', error)
     res.status(500).json({ mensagem: 'Erro ao criar fornecedor' })
   }
 })
@@ -91,7 +92,7 @@ router.put('/:id', authorize('admin', 'gerente'), async (req, res) => {
     if (!f) return res.status(404).json({ mensagem: 'Fornecedor não encontrado' })
     res.json({ fornecedor: f })
   } catch (error) {
-    console.error('Erro ao atualizar fornecedor:', error)
+    logger.error('Erro ao atualizar fornecedor:', error)
     res.status(500).json({ mensagem: 'Erro ao atualizar fornecedor' })
   }
 })

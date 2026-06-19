@@ -1,3 +1,5 @@
+const logger = require('../config/logger')
+const socket = require('../config/socket')
 const Caixa = require('../models/Caixa')
 const Log = require('../models/Log')
 
@@ -13,9 +15,10 @@ const abrirCaixa = async (req, res) => {
       detalhes: `Caixa aberto com saldo inicial de R$${saldoInicial}`,
       referencia: caixa._id
     })
+    socket.emit('caixa:aberto', { abertoPor: req.user.nome, saldoInicial })
     res.status(201).json({ caixa, mensagem: 'Caixa aberto com sucesso' })
   } catch (error) {
-    console.error('Erro ao abrir caixa:', error)
+    logger.error('Erro ao abrir caixa:', error)
     res.status(500).json({ mensagem: 'Erro ao abrir caixa' })
   }
 }
@@ -41,9 +44,10 @@ const fecharCaixa = async (req, res) => {
       detalhes: `Caixa fechado. Vendas: R$${caixa.totalVendas}. Diferença: R$${diferenca}`,
       referencia: caixa._id
     })
+    socket.emit('caixa:fechado', { fechadoPor: req.user.nome, diferenca })
     res.json({ caixa, mensagem: 'Caixa fechado com sucesso' })
   } catch (error) {
-    console.error('Erro ao fechar caixa:', error)
+    logger.error('Erro ao fechar caixa:', error)
     res.status(500).json({ mensagem: 'Erro ao fechar caixa' })
   }
 }
@@ -61,9 +65,10 @@ const registrarSangria = async (req, res) => {
       detalhes: `Sangria R$${valor} — ${motivo}`,
       referencia: caixa._id
     })
+    socket.emit('caixa:sangria', { registradoPor: req.user.nome, valor, motivo })
     res.json({ mensagem: 'Sangria registrada', caixa })
   } catch (error) {
-    console.error('Erro ao registrar sangria:', error)
+    logger.error('Erro ao registrar sangria:', error)
     res.status(500).json({ mensagem: 'Erro ao registrar sangria' })
   }
 }
@@ -73,7 +78,7 @@ const caixaAtual = async (req, res) => {
     const caixa = await Caixa.findOne({ status: 'aberto', abertoPor: req.user._id }).populate('abertoPor', 'nome')
     res.json({ caixa: caixa || null })
   } catch (error) {
-    console.error('Erro ao buscar caixa:', error)
+    logger.error('Erro ao buscar caixa:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar caixa' })
   }
 }
@@ -83,7 +88,7 @@ const listarAbertos = async (req, res) => {
     const caixas = await Caixa.find({ status: 'aberto' }).populate('abertoPor', 'nome perfil').sort({ abertoEm: 1 })
     res.json({ caixas })
   } catch (error) {
-    console.error('Erro ao listar caixas abertos:', error)
+    logger.error('Erro ao listar caixas abertos:', error)
     res.status(500).json({ mensagem: 'Erro ao listar caixas abertos' })
   }
 }
@@ -100,7 +105,7 @@ const listarHistorico = async (req, res) => {
     const total = await Caixa.countDocuments({ status: 'fechado' })
     res.json({ caixas, total, paginas: Math.ceil(total / Number(limit)) })
   } catch (error) {
-    console.error('Erro ao listar histórico de caixas:', error)
+    logger.error('Erro ao listar histórico de caixas:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar histórico' })
   }
 }

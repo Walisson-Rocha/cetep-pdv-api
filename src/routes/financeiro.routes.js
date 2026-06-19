@@ -1,3 +1,4 @@
+const logger = require('../config/logger')
 const express = require('express')
 const router = express.Router()
 const Venda = require('../models/Venda')
@@ -68,7 +69,7 @@ router.get('/', authorize('admin', 'gerente'), async (req, res) => {
       despesasPorCategoria: porCategoria,
     })
   } catch (error) {
-    console.error('Erro ao buscar financeiro:', error)
+    logger.error('Erro ao buscar financeiro:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar dados financeiros' })
   }
 })
@@ -93,7 +94,7 @@ router.post('/despesas', authorize('admin', 'gerente'), async (req, res) => {
     })
     res.status(201).json({ despesa })
   } catch (error) {
-    console.error('Erro ao criar despesa:', error)
+    logger.error('Erro ao criar despesa:', error)
     res.status(500).json({ mensagem: 'Erro ao criar despesa' })
   }
 })
@@ -107,7 +108,7 @@ router.put('/despesas/:id', authorize('admin', 'gerente'), async (req, res) => {
     if (!despesa) return res.status(404).json({ mensagem: 'Despesa não encontrada' })
     res.json({ despesa })
   } catch (error) {
-    console.error('Erro ao atualizar despesa:', error)
+    logger.error('Erro ao atualizar despesa:', error)
     res.status(500).json({ mensagem: 'Erro ao atualizar despesa' })
   }
 })
@@ -118,7 +119,7 @@ router.delete('/despesas/:id', authorize('admin', 'gerente'), async (req, res) =
     if (!despesa) return res.status(404).json({ mensagem: 'Despesa não encontrada' })
     res.json({ mensagem: 'Despesa removida' })
   } catch (error) {
-    console.error('Erro ao deletar despesa:', error)
+    logger.error('Erro ao deletar despesa:', error)
     res.status(500).json({ mensagem: 'Erro ao deletar despesa' })
   }
 })

@@ -5,6 +5,7 @@ jest.mock('../src/models/Caixa')
 jest.mock('../src/models/MovimentoEstoque')
 jest.mock('../src/models/Cliente')
 jest.mock('../src/models/Log')
+jest.mock('../src/models/Configuracao')
 jest.mock('../src/middleware/auth.middleware', () => ({
   protect: (req, _res, next) => {
     req.user = { _id: 'usr1', nome: 'Admin', perfil: 'admin' }
@@ -21,6 +22,7 @@ const Caixa = require('../src/models/Caixa')
 const MovimentoEstoque = require('../src/models/MovimentoEstoque')
 const Cliente = require('../src/models/Cliente')
 const Log = require('../src/models/Log')
+const Configuracao = require('../src/models/Configuracao')
 
 const app = express()
 app.use(express.json())
@@ -36,7 +38,7 @@ function mockCaixaAberto() {
 
 function mockProdutoDisponivel(overrides = {}) {
   const prod = {
-    _id: 'prod1', nome: 'Caneta', precoVenda: 5, ativo: true, estoque: 10,
+    _id: '507f1f77bcf86cd799439031', nome: 'Caneta', precoVenda: 5, ativo: true, estoque: 10,
     save: jest.fn().mockResolvedValue(true),
     ...overrides,
   }
@@ -45,23 +47,32 @@ function mockProdutoDisponivel(overrides = {}) {
 }
 
 function mockVendaCriada(overrides = {}) {
-  const venda = { _id: 'vd1', numero: 42, total: 5, formaPagamento: 'pix', itens: [], ...overrides }
+  const venda = { _id: '507f1f77bcf86cd799439051', numero: 42, total: 5, formaPagamento: 'pix', itens: [], ...overrides }
   Venda.create.mockResolvedValue(venda)
-  const populateFn = jest.fn().mockReturnValue({ populate: jest.fn().mockResolvedValue(venda) })
-  Venda.findById.mockReturnValue({ populate: populateFn })
+  // controller encadeia 3x .populate() (cliente, colaborador, vendedor) antes de resolver
+  Venda.findById.mockReturnValue({
+    populate: jest.fn().mockReturnValue({
+      populate: jest.fn().mockReturnValue({
+        populate: jest.fn().mockResolvedValue(venda),
+      }),
+    }),
+  })
   MovimentoEstoque.create.mockResolvedValue({})
   Log.create.mockResolvedValue({})
   return venda
 }
 
-beforeEach(() => jest.clearAllMocks())
+beforeEach(() => {
+  jest.clearAllMocks()
+  Configuracao.findOne.mockReturnValue({ lean: jest.fn().mockResolvedValue(null) })
+})
 
 // ─── POST /api/vendas ─────────────────────────────────────────────────────────
 describe('POST /api/vendas', () => {
   test('400 quando não há caixa aberto', async () => {
     Caixa.findOne.mockResolvedValue(null)
     const res = await request(app).post('/api/vendas').send({
-      itens: [{ produtoId: 'prod1', quantidade: 1 }],
+      itens: [{ produtoId: '507f1f77bcf86cd799439031', quantidade: 1 }],
       formaPagamento: 'pix',
     })
     expect(res.status).toBe(400)
@@ -72,7 +83,7 @@ describe('POST /api/vendas', () => {
     mockCaixaAberto()
     Produto.findById.mockResolvedValue(null)
     const res = await request(app).post('/api/vendas').send({
-      itens: [{ produtoId: 'prod-inexistente', quantidade: 1 }],
+      itens: [{ produtoId: '507f1f77bcf86cd799439032', quantidade: 1 }],
       formaPagamento: 'pix',
     })
     expect(res.status).toBe(400)
@@ -83,7 +94,7 @@ describe('POST /api/vendas', () => {
     mockCaixaAberto()
     mockProdutoDisponivel({ estoque: 2 })
     const res = await request(app).post('/api/vendas').send({
-      itens: [{ produtoId: 'prod1', quantidade: 5 }],
+      itens: [{ produtoId: '507f1f77bcf86cd799439031', quantidade: 5 }],
       formaPagamento: 'pix',
     })
     expect(res.status).toBe(400)
@@ -97,7 +108,7 @@ describe('POST /api/vendas', () => {
     mockProdutoDisponivel()
     mockVendaCriada()
     const res = await request(app).post('/api/vendas').send({
-      itens: [{ produtoId: 'prod1', quantidade: 2 }],
+      itens: [{ produtoId: '507f1f77bcf86cd799439031', quantidade: 2 }],
       formaPagamento: 'pix',
     })
     expect(res.status).toBe(201)
@@ -113,11 +124,11 @@ describe('POST /api/vendas', () => {
     mockVendaCriada({ formaPagamento: 'fiado', total: 10 })
     Cliente.findByIdAndUpdate.mockResolvedValue({})
     await request(app).post('/api/vendas').send({
-      itens: [{ produtoId: 'prod1', quantidade: 2 }],
+      itens: [{ produtoId: '507f1f77bcf86cd799439031', quantidade: 2 }],
       formaPagamento: 'fiado',
-      clienteId: 'cli1',
+      clienteId: '507f1f77bcf86cd799439041',
     })
-    expect(Cliente.findByIdAndUpdate).toHaveBeenCalledWith('cli1', { $inc: { saldoFiado: expect.any(Number) } })
+    expect(Cliente.findByIdAndUpdate).toHaveBeenCalledWith('507f1f77bcf86cd799439041', { $inc: { saldoFiado: expect.any(Number) } })
   })
 
   test('201 calcula total corretamente com desconto', async () => {
@@ -125,7 +136,7 @@ describe('POST /api/vendas', () => {
     mockProdutoDisponivel({ precoVenda: 20 })
     const venda = mockVendaCriada({ total: 35 })
     const res = await request(app).post('/api/vendas').send({
-      itens: [{ produtoId: 'prod1', quantidade: 2 }],
+      itens: [{ produtoId: '507f1f77bcf86cd799439031', quantidade: 2 }],
       formaPagamento: 'dinheiro',
       desconto: 5,
     })
@@ -138,30 +149,30 @@ describe('POST /api/vendas', () => {
 describe('PUT /api/vendas/:id/cancelar', () => {
   test('404 quando venda não existe', async () => {
     Venda.findById.mockResolvedValue(null)
-    const res = await request(app).put('/api/vendas/vd1/cancelar').send({ motivo: 'Erro' })
+    const res = await request(app).put('/api/vendas/507f1f77bcf86cd799439051/cancelar').send({ motivo: 'Erro' })
     expect(res.status).toBe(404)
   })
 
   test('400 quando venda já cancelada', async () => {
-    Venda.findById.mockResolvedValue({ _id: 'vd1', cancelada: true, itens: [] })
-    const res = await request(app).put('/api/vendas/vd1/cancelar').send({ motivo: 'Erro' })
+    Venda.findById.mockResolvedValue({ _id: '507f1f77bcf86cd799439051', cancelada: true, itens: [] })
+    const res = await request(app).put('/api/vendas/507f1f77bcf86cd799439051/cancelar').send({ motivo: 'Erro' })
     expect(res.status).toBe(400)
     expect(res.body.mensagem).toMatch(/já cancelada/i)
   })
 
   test('200 cancela venda e restaura estoque', async () => {
-    const mockProd = { _id: 'p1', estoque: 3, save: jest.fn().mockResolvedValue(true) }
+    const mockProd = { _id: '507f1f77bcf86cd799439061', estoque: 3, save: jest.fn().mockResolvedValue(true) }
     const venda = {
-      _id: 'vd1', numero: 1, cancelada: false, formaPagamento: 'pix',
+      _id: '507f1f77bcf86cd799439051', numero: 1, cancelada: false, formaPagamento: 'pix',
       total: 15, cliente: null,
-      itens: [{ produto: 'p1', quantidade: 2, nomeProduto: 'Caneta' }],
+      itens: [{ produto: '507f1f77bcf86cd799439061', quantidade: 2, nomeProduto: 'Caneta' }],
       save: jest.fn().mockResolvedValue(true),
     }
     Venda.findById.mockResolvedValue(venda)
     Produto.findById.mockResolvedValue(mockProd)
     MovimentoEstoque.create.mockResolvedValue({})
     Log.create.mockResolvedValue({})
-    const res = await request(app).put('/api/vendas/vd1/cancelar').send({ motivo: 'Pedido do cliente' })
+    const res = await request(app).put('/api/vendas/507f1f77bcf86cd799439051/cancelar').send({ motivo: 'Pedido do cliente' })
     expect(res.status).toBe(200)
     expect(mockProd.save).toHaveBeenCalled()
     expect(venda.cancelada).toBe(true)
@@ -170,18 +181,18 @@ describe('PUT /api/vendas/:id/cancelar', () => {
 
   test('cancelamento de venda fiado reverte saldoFiado', async () => {
     const venda = {
-      _id: 'vd1', numero: 1, cancelada: false, formaPagamento: 'fiado',
-      total: 50, cliente: 'cli1',
-      itens: [{ produto: 'p1', quantidade: 1, nomeProduto: 'Cesta' }],
+      _id: '507f1f77bcf86cd799439051', numero: 1, cancelada: false, formaPagamento: 'fiado',
+      total: 50, cliente: '507f1f77bcf86cd799439041',
+      itens: [{ produto: '507f1f77bcf86cd799439061', quantidade: 1, nomeProduto: 'Cesta' }],
       save: jest.fn().mockResolvedValue(true),
     }
     Venda.findById.mockResolvedValue(venda)
-    Produto.findById.mockResolvedValue({ _id: 'p1', estoque: 0, save: jest.fn() })
+    Produto.findById.mockResolvedValue({ _id: '507f1f77bcf86cd799439061', estoque: 0, save: jest.fn() })
     Cliente.findByIdAndUpdate.mockResolvedValue({})
     MovimentoEstoque.create.mockResolvedValue({})
     Log.create.mockResolvedValue({})
-    await request(app).put('/api/vendas/vd1/cancelar').send({ motivo: 'Devolvido' })
-    expect(Cliente.findByIdAndUpdate).toHaveBeenCalledWith('cli1', { $inc: { saldoFiado: -50 } })
+    await request(app).put('/api/vendas/507f1f77bcf86cd799439051/cancelar').send({ motivo: 'Devolvido' })
+    expect(Cliente.findByIdAndUpdate).toHaveBeenCalledWith('507f1f77bcf86cd799439041', { $inc: { saldoFiado: -50 } })
   })
 })
 

@@ -1,3 +1,5 @@
+const logger = require('../config/logger')
+const socket = require('../config/socket')
 const Produto = require('../models/Produto')
 const Venda = require('../models/Venda')
 const Caixa = require('../models/Caixa')
@@ -138,9 +140,13 @@ const registrar = async (req, res) => {
       .populate('cliente', 'nome telefone')
       .populate('colaborador', 'nome')
       .populate('vendedor', 'nome')
+    socket.emit('venda:nova', {
+      numero: venda.numero, total: venda.total, formaPagamento: venda.formaPagamento,
+      vendedor: req.user.nome,
+    })
     res.status(201).json({ venda: vendaPopulada, mensagem: 'Venda registrada com sucesso' })
   } catch (error) {
-    console.error('Erro ao registrar venda:', error)
+    logger.error('Erro ao registrar venda:', error)
     res.status(500).json({ mensagem: 'Erro ao registrar venda' })
   }
 }
@@ -187,9 +193,10 @@ const cancelar = async (req, res) => {
       detalhes: `Venda #${venda.numero} cancelada. Motivo: ${motivo}`,
       referencia: venda._id
     })
+    socket.emit('venda:cancelada', { numero: venda.numero, total: venda.total })
     res.json({ mensagem: 'Venda cancelada e estoque estornado', venda })
   } catch (error) {
-    console.error('Erro ao cancelar venda:', error)
+    logger.error('Erro ao cancelar venda:', error)
     res.status(500).json({ mensagem: 'Erro ao cancelar venda' })
   }
 }
@@ -214,7 +221,7 @@ const listar = async (req, res) => {
     const total = await Venda.countDocuments(filtro)
     res.json({ vendas, total, paginas: Math.ceil(total / limit) })
   } catch (error) {
-    console.error('Erro ao listar vendas:', error)
+    logger.error('Erro ao listar vendas:', error)
     res.status(500).json({ mensagem: 'Erro ao listar vendas' })
   }
 }
@@ -240,7 +247,7 @@ const vendasHoje = async (req, res) => {
     }, {})
     res.json({ vendas, total, quantidade: vendas.length, porFormaPagamento: porForma })
   } catch (error) {
-    console.error('Erro ao buscar vendas de hoje:', error)
+    logger.error('Erro ao buscar vendas de hoje:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar vendas de hoje' })
   }
 }
@@ -267,7 +274,7 @@ const vendasCliente = async (req, res) => {
       quantidadeTotal: agg[0]?.qtd || 0
     })
   } catch (error) {
-    console.error('Erro ao buscar vendas do cliente:', error)
+    logger.error('Erro ao buscar vendas do cliente:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar histórico do cliente' })
   }
 }

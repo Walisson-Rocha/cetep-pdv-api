@@ -1,3 +1,4 @@
+const logger = require('../config/logger')
 const express = require('express')
 const router = express.Router()
 const Cliente = require('../models/Cliente')
@@ -20,7 +21,7 @@ router.get('/', async (req, res) => {
     const clientes = await Cliente.find(filtro).sort({ nome: 1 })
     res.json({ clientes })
   } catch (error) {
-    console.error('Erro ao buscar clientes:', error)
+    logger.error('Erro ao buscar clientes:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar clientes' })
   }
 })
@@ -39,7 +40,7 @@ router.post('/', authorize('admin', 'gerente'), async (req, res) => {
     })
     res.status(201).json({ cliente })
   } catch (error) {
-    console.error('Erro ao criar cliente:', error)
+    logger.error('Erro ao criar cliente:', error)
     res.status(500).json({ mensagem: 'Erro ao criar cliente' })
   }
 })
@@ -57,7 +58,7 @@ router.put('/:id', authorize('admin', 'gerente'), async (req, res) => {
     if (!cliente) return res.status(404).json({ mensagem: 'Cliente não encontrado' })
     res.json({ cliente })
   } catch (error) {
-    console.error('Erro ao atualizar cliente:', error)
+    logger.error('Erro ao atualizar cliente:', error)
     res.status(500).json({ mensagem: 'Erro ao atualizar cliente' })
   }
 })
@@ -79,7 +80,7 @@ router.get('/:id/pontos', async (req, res) => {
       descontoMaximo,
     })
   } catch (error) {
-    console.error('Erro ao buscar pontos:', error)
+    logger.error('Erro ao buscar pontos:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar pontos' })
   }
 })
@@ -109,7 +110,7 @@ router.put('/:id/quitar', authorize('admin', 'gerente'), async (req, res) => {
     })
     res.json({ cliente, mensagem: `Fiado quitado: R$${parseFloat(valor).toFixed(2)}` })
   } catch (error) {
-    console.error('Erro ao quitar fiado:', error)
+    logger.error('Erro ao quitar fiado:', error)
     res.status(500).json({ mensagem: 'Erro ao quitar fiado' })
   }
 })

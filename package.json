@@ -6,10 +6,17 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "seed": "node src/utils/seed.js",
-    "test": "jest"
+    "test": "jest",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "format": "prettier --write src"
   },
   "jest": {
     "testEnvironment": "node",
+    "setupFiles": [
+      "<rootDir>/jest.setup.js"
+    ],
+    "maxWorkers": 1,
     "testMatch": [
       "**/__tests__/**/*.test.js"
     ],
@@ -36,14 +43,22 @@
     "express": "^4.18.2",
     "express-rate-limit": "^8.5.2",
     "express-validator": "^7.0.1",
+    "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.0.3",
     "morgan": "^1.10.1",
-    "socket.io": "^4.8.3"
+    "node-cron": "^4.4.1",
+    "socket.io": "^4.8.3",
+    "winston": "^3.19.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.5.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.6.0",
     "jest": "^30.4.2",
     "nodemon": "^3.0.2",
+    "prettier": "^3.8.4",
     "supertest": "^7.2.2"
   }
 }

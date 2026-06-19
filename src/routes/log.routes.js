@@ -1,3 +1,4 @@
+const logger = require('../config/logger')
 const express = require('express')
 const router = express.Router()
 const Log = require('../models/Log')
@@ -28,7 +29,7 @@ router.get('/', async (req, res) => {
 
     res.json({ logs, total, pagina: parseInt(pagina), totalPaginas: Math.ceil(total / parseInt(limite)) })
   } catch (error) {
-    console.error('Erro ao buscar logs:', error)
+    logger.error('Erro ao buscar logs:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar logs' })
   }
 })

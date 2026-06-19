@@ -1,3 +1,4 @@
+const logger = require('../config/logger')
 const Produto = require('../models/Produto')
 const Venda = require('../models/Venda')
 const Caixa = require('../models/Caixa')
@@ -209,7 +210,7 @@ const resumo = async (req, res) => {
       meta: { mensal: metaMensal, totalMes: totalVendasMes, progresso: progressoMeta }
     })
   } catch (error) {
-    console.error('Erro no dashboard:', error)
+    logger.error('Erro no dashboard:', error)
     res.status(500).json({ mensagem: 'Erro ao carregar dashboard' })
   }
 }

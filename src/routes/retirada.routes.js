@@ -1,3 +1,4 @@
+const logger = require('../config/logger')
 const express = require('express')
 const router = express.Router()
 const Retirada = require('../models/Retirada')
@@ -15,7 +16,7 @@ router.get('/colaboradores', async (req, res) => {
       .sort({ nome: 1 })
     res.json({ colaboradores })
   } catch (error) {
-    console.error('Erro ao buscar colaboradores:', error)
+    logger.error('Erro ao buscar colaboradores:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar colaboradores' })
   }
 })
@@ -30,7 +31,7 @@ router.get('/minhas', async (req, res) => {
       .sort({ createdAt: -1 })
     res.json({ retiradas, mes })
   } catch (error) {
-    console.error('Erro ao listar retiradas próprias:', error)
+    logger.error('Erro ao listar retiradas próprias:', error)
     res.status(500).json({ mensagem: 'Erro ao listar retiradas' })
   }
 })
@@ -60,7 +61,7 @@ router.get('/', async (req, res) => {
 
     res.json({ retiradas, total, totalPages: Math.ceil(total / limit) || 1, page, mes })
   } catch (error) {
-    console.error('Erro ao listar retiradas:', error)
+    logger.error('Erro ao listar retiradas:', error)
     res.status(500).json({ mensagem: 'Erro ao listar retiradas' })
   }
 })
@@ -87,7 +88,7 @@ router.get('/folha', async (req, res) => {
 
     res.json({ folha, mes, totalGeral: folha.reduce((acc, f) => acc + f.totalRetiradas, 0) })
   } catch (error) {
-    console.error('Erro ao gerar folha:', error)
+    logger.error('Erro ao gerar folha:', error)
     res.status(500).json({ mensagem: 'Erro ao gerar folha' })
   }
 })
@@ -146,7 +147,7 @@ router.post('/', async (req, res) => {
 
     res.status(201).json({ retirada })
   } catch (error) {
-    console.error('Erro ao criar retirada:', error)
+    logger.error('Erro ao criar retirada:', error)
     res.status(500).json({ mensagem: 'Erro ao registrar retirada' })
   }
 })
@@ -164,7 +165,7 @@ router.delete('/:id', async (req, res) => {
     await Retirada.findByIdAndDelete(req.params.id)
     res.json({ mensagem: 'Retirada estornada e removida' })
   } catch (error) {
-    console.error('Erro ao deletar retirada:', error)
+    logger.error('Erro ao deletar retirada:', error)
     res.status(500).json({ mensagem: 'Erro ao remover retirada' })
   }
 })

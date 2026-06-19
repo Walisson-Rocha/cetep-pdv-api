@@ -1,5 +1,6 @@
+const logger = require('../config/logger')
+const socket = require('../config/socket')
 const Produto = require('../models/Produto')
-const MovimentoEstoque = require('../models/MovimentoEstoque')
 const Log = require('../models/Log')
 
 const listar = async (req, res) => {
@@ -22,7 +23,7 @@ const listar = async (req, res) => {
     const lista = status ? produtos.filter(p => p.statusEstoque === status) : produtos
     res.json({ produtos: lista, total, paginas: Math.ceil(total / limit) })
   } catch (error) {
-    console.error('Erro ao listar produtos:', error)
+    logger.error('Erro ao listar produtos:', error)
     res.status(500).json({ mensagem: 'Erro ao listar produtos' })
   }
 }
@@ -36,7 +37,7 @@ const buscarPorCodigo = async (req, res) => {
     if (!produto) return res.status(404).json({ mensagem: 'Produto não encontrado' })
     res.json({ produto })
   } catch (error) {
-    console.error('Erro na busca:', error)
+    logger.error('Erro na busca:', error)
     res.status(500).json({ mensagem: 'Erro na busca' })
   }
 }
@@ -48,7 +49,7 @@ const buscarPorId = async (req, res) => {
     if (!produto) return res.status(404).json({ mensagem: 'Produto não encontrado' })
     res.json({ produto })
   } catch (error) {
-    console.error('Erro ao buscar produto:', error)
+    logger.error('Erro ao buscar produto:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar produto' })
   }
 }
@@ -69,7 +70,7 @@ const criar = async (req, res) => {
     if (error.code === 11000) {
       return res.status(400).json({ mensagem: 'Código de barras já cadastrado' })
     }
-    console.error('Erro ao criar produto:', error)
+    logger.error('Erro ao criar produto:', error)
     res.status(500).json({ mensagem: 'Erro ao criar produto' })
   }
 }
@@ -89,9 +90,15 @@ const atualizar = async (req, res) => {
     }
     const produto = await Produto.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true })
       .populate('categoria', 'nome cor icone')
+    if (req.body.estoque !== undefined) {
+      socket.emit('estoque:atualizado', {
+        produtoId: produto._id, nome: produto.nome, estoque: produto.estoque,
+        baixo: produto.estoque <= produto.estoqueMinimo,
+      })
+    }
     res.json({ produto, mensagem: 'Produto atualizado' })
   } catch (error) {
-    console.error('Erro ao atualizar produto:', error)
+    logger.error('Erro ao atualizar produto:', error)
     res.status(500).json({ mensagem: 'Erro ao atualizar produto' })
   }
 }
@@ -101,7 +108,7 @@ const deletar = async (req, res) => {
     await Produto.findByIdAndUpdate(req.params.id, { ativo: false })
     res.json({ mensagem: 'Produto removido com sucesso' })
   } catch (error) {
-    console.error('Erro ao remover produto:', error)
+    logger.error('Erro ao remover produto:', error)
     res.status(500).json({ mensagem: 'Erro ao remover produto' })
   }
 }
@@ -118,7 +125,7 @@ const alertas = async (req, res) => {
     })
     res.json({ zerados, baixos, vencendo })
   } catch (error) {
-    console.error('Erro ao buscar alertas:', error)
+    logger.error('Erro ao buscar alertas:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar alertas' })
   }
 }
@@ -142,7 +149,7 @@ const reajustarPrecos = async (req, res) => {
     })
     res.json({ atualizados: produtos.length, mensagem: `${produtos.length} produto(s) reajustados com sucesso` })
   } catch (error) {
-    console.error('Erro no reajuste de preços:', error)
+    logger.error('Erro no reajuste de preços:', error)
     res.status(500).json({ mensagem: 'Erro ao reajustar preços' })
   }
 }

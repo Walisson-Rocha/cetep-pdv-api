@@ -1,11 +1,26 @@
+const logger = require('../config/logger')
 const express = require('express')
 const router = express.Router()
 const bcrypt = require('bcryptjs')
+const { body, param } = require('express-validator')
 const User = require('../models/User')
 const Log = require('../models/Log')
 const { protect, authorize } = require('../middleware/auth.middleware')
+const validate = require('../middleware/validate.middleware')
 
 router.use(protect)
+
+const validarCriar = [
+  body('nome').trim().notEmpty().withMessage('Nome é obrigatório'),
+  body('email').trim().isEmail().withMessage('E-mail inválido').customSanitizer(v => v.toLowerCase()),
+  body('senha').isLength({ min: 6 }).withMessage('Senha deve ter pelo menos 6 caracteres'),
+]
+const validarAtualizar = [
+  param('id').isMongoId().withMessage('ID inválido'),
+  body('email').optional().trim().isEmail().withMessage('E-mail inválido').customSanitizer(v => v.toLowerCase()),
+  body('senha').optional({ checkFalsy: true }).isLength({ min: 6 }).withMessage('Senha deve ter pelo menos 6 caracteres'),
+]
+const validarId = [param('id').isMongoId().withMessage('ID inválido')]
 
 const CAMPOS_ENDERECO = ['cep', 'logradouro', 'numero', 'bairro', 'cidade', 'estado']
 const CAMPOS_EDITAVEIS = [
@@ -45,12 +60,12 @@ router.get('/', authorize('admin'), async (req, res) => {
 
     res.json({ usuarios, total, totalAll, totalPages: Math.ceil(total / limit) || 1, page, counts })
   } catch (error) {
-    console.error('Erro ao buscar usuários:', error)
+    logger.error('Erro ao buscar usuários:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar usuários' })
   }
 })
 
-router.post('/', authorize('admin'), async (req, res) => {
+router.post('/', authorize('admin'), validarCriar, validate, async (req, res) => {
   try {
     const { nome, email, senha, perfil } = req.body
     if (!nome || !email || !senha)
@@ -95,12 +110,12 @@ router.post('/', authorize('admin'), async (req, res) => {
   } catch (error) {
     if (error.code === 11000)
       return res.status(400).json({ mensagem: 'E-mail já cadastrado' })
-    console.error('Erro ao criar usuário:', error)
+    logger.error('Erro ao criar usuário:', error)
     res.status(500).json({ mensagem: 'Erro ao criar usuário' })
   }
 })
 
-router.put('/:id', authorize('admin'), async (req, res) => {
+router.put('/:id', authorize('admin'), validarAtualizar, validate, async (req, res) => {
   try {
     const body = req.body
     const perfisValidos = ['admin', 'gerente', 'caixa', 'estoquista', 'colaborador']
@@ -129,12 +144,12 @@ router.put('/:id', authorize('admin'), async (req, res) => {
   } catch (error) {
     if (error.code === 11000)
       return res.status(400).json({ mensagem: 'E-mail já cadastrado' })
-    console.error('Erro ao atualizar usuário:', error)
+    logger.error('Erro ao atualizar usuário:', error)
     res.status(500).json({ mensagem: 'Erro ao atualizar usuário' })
   }
 })
 
-router.delete('/:id', authorize('admin'), async (req, res) => {
+router.delete('/:id', authorize('admin'), validarId, validate, async (req, res) => {
   try {
     if (req.params.id === req.user._id.toString())
       return res.status(400).json({ mensagem: 'Você não pode desativar sua própria conta' })
@@ -152,7 +167,7 @@ router.delete('/:id', authorize('admin'), async (req, res) => {
     })
     res.json({ mensagem: 'Usuário desativado', usuario: user })
   } catch (error) {
-    console.error('Erro ao desativar usuário:', error)
+    logger.error('Erro ao desativar usuário:', error)
     res.status(500).json({ mensagem: 'Erro ao desativar usuário' })
   }
 })

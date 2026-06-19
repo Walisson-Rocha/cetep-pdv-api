@@ -1,3 +1,4 @@
+const logger = require('../config/logger')
 const express = require('express')
 const router = express.Router()
 const Venda = require('../models/Venda')
@@ -46,7 +47,7 @@ router.get('/vendas', authorize('admin', 'gerente'), async (req, res) => {
     })
     res.json({ total, quantidade: vendas.length, porFormaPagamento: porForma, porVendedor, porCategoria, comissaoAtiva })
   } catch (error) {
-    console.error('Erro ao gerar relatório de vendas:', error)
+    logger.error('Erro ao gerar relatório de vendas:', error)
     res.status(500).json({ mensagem: 'Erro ao gerar relatório de vendas' })
   }
 })
@@ -61,7 +62,7 @@ router.get('/logs', authorize('admin', 'gerente'), async (req, res) => {
     const total = await Log.countDocuments()
     res.json({ logs, total, paginas: Math.ceil(total / limit) })
   } catch (error) {
-    console.error('Erro ao buscar logs:', error)
+    logger.error('Erro ao buscar logs:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar logs' })
   }
 })
@@ -78,7 +79,7 @@ router.get('/produtos-parados', authorize('admin', 'gerente'), async (req, res) 
     const parados = todos.filter(p => !idsVendidos.has(p._id.toString()))
     res.json({ parados })
   } catch (error) {
-    console.error('Erro ao buscar produtos parados:', error)
+    logger.error('Erro ao buscar produtos parados:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar produtos parados' })
   }
 })

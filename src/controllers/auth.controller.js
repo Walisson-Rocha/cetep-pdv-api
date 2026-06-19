@@ -1,8 +1,9 @@
 const jwt = require('jsonwebtoken')
 const User = require('../models/User')
 const Log = require('../models/Log')
+const logger = require('../config/logger')
 
-const REFRESH_SECRET = (process.env.JWT_SECRET || 'fallback') + '_refresh'
+const REFRESH_SECRET = process.env.JWT_SECRET + '_refresh'
 
 const _attempts = new Map() // email -> { count, firstAttempt }
 const MAX_TENTATIVAS = 5
@@ -21,11 +22,12 @@ function verificarRateLimit(email) {
   return 0
 }
 
-const gerarToken = (id) =>
-  jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '1h' })
+// tv (tokenVersion) é incluído no payload — incrementar no banco revoga todos os tokens emitidos antes disso
+const gerarToken = (id, tokenVersion) =>
+  jwt.sign({ id, tv: tokenVersion }, process.env.JWT_SECRET, { expiresIn: '1h' })
 
-const gerarRefreshToken = (id) =>
-  jwt.sign({ id }, REFRESH_SECRET, { expiresIn: '30d' })
+const gerarRefreshToken = (id, tokenVersion) =>
+  jwt.sign({ id, tv: tokenVersion }, REFRESH_SECRET, { expiresIn: '30d' })
 
 const login = async (req, res) => {
   try {
@@ -48,15 +50,15 @@ const login = async (req, res) => {
       usuario: user._id, nomeUsuario: user.nome,
       acao: 'login', detalhes: 'Login realizado', ip: req.ip
     })
-    const token = gerarToken(user._id)
-    const refreshToken = gerarRefreshToken(user._id)
+    const token = gerarToken(user._id, user.tokenVersion)
+    const refreshToken = gerarRefreshToken(user._id, user.tokenVersion)
     res.json({
       token,
       refreshToken,
       usuario: { id: user._id, nome: user.nome, email: user.email, perfil: user.perfil }
     })
   } catch (error) {
-    console.error('Erro no login:', error)
+    logger.error('Erro no login:', error)
     res.status(500).json({ mensagem: 'Erro ao fazer login' })
   }
 }
@@ -70,7 +72,9 @@ const refresh = async (req, res) => {
     const user = await User.findById(decoded.id)
     if (!user || !user.ativo)
       return res.status(401).json({ mensagem: 'Usuário não encontrado ou inativo' })
-    res.json({ token: gerarToken(user._id) })
+    if (decoded.tv !== user.tokenVersion)
+      return res.status(401).json({ mensagem: 'Sessão revogada. Faça login novamente.' })
+    res.json({ token: gerarToken(user._id, user.tokenVersion) })
   } catch {
     res.status(401).json({ mensagem: 'Refresh token inválido ou expirado. Faça login novamente.' })
   }
@@ -86,6 +90,17 @@ const me = async (req, res) => {
   })
 }
 
+const logout = async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.user._id, { $inc: { tokenVersion: 1 } })
+    await Log.create({
+      usuario: req.user._id, nomeUsuario: req.user.nome,
+      acao: 'logout', detalhes: 'Logout realizado', ip: req.ip
+    })
+  } catch { /* não bloqueia o logout */ }
+  res.json({ mensagem: 'Logout realizado com sucesso' })
+}
+
 const alterarSenha = async (req, res) => {
   try {
     const { senhaAtual, novaSenha } = req.body
@@ -98,12 +113,15 @@ const alterarSenha = async (req, res) => {
     if (!correta)
       return res.status(400).json({ mensagem: 'Senha atual incorreta' })
     user.senha = novaSenha
+    user.tokenVersion += 1 // revoga sessões existentes; um novo token é emitido abaixo para a sessão atual
     await user.save()
-    res.json({ mensagem: 'Senha alterada com sucesso' })
+    const token = gerarToken(user._id, user.tokenVersion)
+    const refreshToken = gerarRefreshToken(user._id, user.tokenVersion)
+    res.json({ mensagem: 'Senha alterada com sucesso', token, refreshToken })
   } catch (error) {
-    console.error('Erro ao alterar senha:', error)
+    logger.error('Erro ao alterar senha:', error)
     res.status(500).json({ mensagem: 'Erro ao alterar senha' })
   }
 }
 
-module.exports = { login, refresh, me, alterarSenha }
+module.exports = { login, refresh, me, logout, alterarSenha }

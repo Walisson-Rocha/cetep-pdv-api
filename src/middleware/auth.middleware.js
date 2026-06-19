@@ -13,9 +13,12 @@ const protect = async (req, res, next) => {
     if (!user || !user.ativo) {
       return res.status(401).json({ mensagem: 'Usuário inativo ou não encontrado' })
     }
+    if (decoded.tv !== user.tokenVersion) {
+      return res.status(401).json({ mensagem: 'Sessão revogada. Faça login novamente.' })
+    }
     req.user = user
     next()
-  } catch (error) {
+  } catch {
     return res.status(401).json({ mensagem: 'Token inválido ou expirado' })
   }
 }

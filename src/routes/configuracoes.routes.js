@@ -1,3 +1,4 @@
+const logger = require('../config/logger')
 const express = require('express')
 const router = express.Router()
 const { protect, authorize } = require('../middleware/auth.middleware')
@@ -11,7 +12,7 @@ router.get('/', async (req, res) => {
     if (!config) config = await Configuracao.create({})
     res.json(config)
   } catch (error) {
-    console.error('Erro ao buscar configurações:', error)
+    logger.error('Erro ao buscar configurações:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar configurações' })
   }
 })
@@ -26,7 +27,7 @@ router.put('/', authorize('admin'), async (req, res) => {
     )
     res.json({ config, mensagem: 'Configurações salvas com sucesso!' })
   } catch (error) {
-    console.error('Erro ao salvar configurações:', error)
+    logger.error('Erro ao salvar configurações:', error)
     res.status(500).json({ mensagem: 'Erro ao salvar configurações' })
   }
 })

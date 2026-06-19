@@ -1,3 +1,4 @@
+const logger = require('../config/logger')
 const express = require('express')
 const router = express.Router()
 const Produto = require('../models/Produto')
@@ -20,7 +21,7 @@ router.get('/historico', async (req, res) => {
     const total = await MovimentoEstoque.countDocuments(filtro)
     res.json({ movimentos, total, paginas: Math.ceil(total / limit) })
   } catch (error) {
-    console.error('Erro ao buscar histórico de estoque:', error)
+    logger.error('Erro ao buscar histórico de estoque:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar histórico de estoque' })
   }
 })
@@ -56,7 +57,7 @@ router.post('/entrada', authorize('admin', 'gerente', 'estoquista'), async (req,
     })
     res.json({ movimento, produto })
   } catch (error) {
-    console.error('Erro ao registrar entrada de estoque:', error)
+    logger.error('Erro ao registrar entrada de estoque:', error)
     res.status(500).json({ mensagem: 'Erro ao registrar entrada de estoque' })
   }
 })

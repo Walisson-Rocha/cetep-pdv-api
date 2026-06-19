@@ -25,8 +25,8 @@ beforeEach(() => jest.clearAllMocks())
 describe('GET /api/produtos', () => {
   test('200 retorna lista de produtos ativos', async () => {
     const produtos = [
-      { _id: 'p1', nome: 'Caneta', precoVenda: 5, statusEstoque: 'normal' },
-      { _id: 'p2', nome: 'Caderno', precoVenda: 15, statusEstoque: 'normal' },
+      { _id: '507f1f77bcf86cd799439011', nome: 'Caneta', precoVenda: 5, statusEstoque: 'normal' },
+      { _id: '507f1f77bcf86cd799439012', nome: 'Caderno', precoVenda: 15, statusEstoque: 'normal' },
     ]
     Produto.find.mockReturnValue({
       populate: jest.fn().mockReturnThis(),
@@ -67,25 +67,25 @@ describe('GET /api/produtos/alertas', () => {
 
   test('classifica zerados vs baixos corretamente', async () => {
     const produtos = [
-      { _id: 'p1', estoque: 0, estoqueMinimo: 5, validade: null },
-      { _id: 'p2', estoque: 2, estoqueMinimo: 5, validade: null },
-      { _id: 'p3', estoque: 20, estoqueMinimo: 5, validade: null },
+      { _id: '507f1f77bcf86cd799439011', estoque: 0, estoqueMinimo: 5, validade: null },
+      { _id: '507f1f77bcf86cd799439012', estoque: 2, estoqueMinimo: 5, validade: null },
+      { _id: '507f1f77bcf86cd799439013', estoque: 20, estoqueMinimo: 5, validade: null },
     ]
     Produto.find.mockReturnValue({ populate: jest.fn().mockResolvedValue(produtos) })
     const res = await request(app).get('/api/produtos/alertas')
-    expect(res.body.zerados.map(p => p._id)).toContain('p1')
-    expect(res.body.baixos.map(p => p._id)).toContain('p2')
-    expect(res.body.zerados.map(p => p._id)).not.toContain('p3')
-    expect(res.body.baixos.map(p => p._id)).not.toContain('p3')
+    expect(res.body.zerados.map(p => p._id)).toContain('507f1f77bcf86cd799439011')
+    expect(res.body.baixos.map(p => p._id)).toContain('507f1f77bcf86cd799439012')
+    expect(res.body.zerados.map(p => p._id)).not.toContain('507f1f77bcf86cd799439013')
+    expect(res.body.baixos.map(p => p._id)).not.toContain('507f1f77bcf86cd799439013')
   })
 
   test('identifica produtos vencendo em até 5 dias', async () => {
     const amanha = new Date()
     amanha.setDate(amanha.getDate() + 2)
-    const produtos = [{ _id: 'p1', estoque: 10, estoqueMinimo: 5, validade: amanha }]
+    const produtos = [{ _id: '507f1f77bcf86cd799439011', estoque: 10, estoqueMinimo: 5, validade: amanha }]
     Produto.find.mockReturnValue({ populate: jest.fn().mockResolvedValue(produtos) })
     const res = await request(app).get('/api/produtos/alertas')
-    expect(res.body.vencendo.map(p => p._id)).toContain('p1')
+    expect(res.body.vencendo.map(p => p._id)).toContain('507f1f77bcf86cd799439011')
   })
 })
 
@@ -94,11 +94,11 @@ describe('POST /api/produtos', () => {
   test('201 cria produto e registra log', async () => {
     // O controller chama produto.populate() na instância retornada pelo create
     const mockPopulate = jest.fn().mockResolvedValue(undefined)
-    const produto = { _id: 'p1', nome: 'Caneta', precoVenda: 5, populate: mockPopulate }
+    const produto = { _id: '507f1f77bcf86cd799439011', nome: 'Caneta', precoVenda: 5, populate: mockPopulate }
     Produto.create.mockResolvedValue(produto)
     Log.create.mockResolvedValue({})
     const res = await request(app).post('/api/produtos').send({
-      nome: 'Caneta', precoVenda: 5, categoria: 'cat1',
+      nome: 'Caneta', precoVenda: 5, categoria: '507f1f77bcf86cd799439021',
     })
     expect(res.status).toBe(201)
     expect(mockPopulate).toHaveBeenCalled()
@@ -109,7 +109,7 @@ describe('POST /api/produtos', () => {
     const err = new Error(); err.code = 11000
     Produto.create.mockRejectedValue(err)
     const res = await request(app).post('/api/produtos').send({
-      nome: 'Caneta', precoVenda: 5, categoria: 'cat1', codigoBarras: '1234',
+      nome: 'Caneta', precoVenda: 5, categoria: '507f1f77bcf86cd799439021', codigoBarras: '1234',
     })
     expect(res.status).toBe(400)
     expect(res.body.mensagem).toMatch(/código de barras/i)
@@ -121,29 +121,29 @@ describe('PUT /api/produtos/:id', () => {
   test('200 atualiza produto', async () => {
     Produto.findById.mockResolvedValue({ precoVenda: 5 })
     // O controller encadeia .findByIdAndUpdate().populate()
-    const produto = { _id: 'p1', nome: 'Caneta Azul', precoVenda: 6 }
+    const produto = { _id: '507f1f77bcf86cd799439011', nome: 'Caneta Azul', precoVenda: 6 }
     Produto.findByIdAndUpdate = jest.fn().mockReturnValue({
       populate: jest.fn().mockResolvedValue(produto),
     })
     Log.create.mockResolvedValue({})
-    const res = await request(app).put('/api/produtos/p1').send({ nome: 'Caneta Azul', precoVenda: 6 })
+    const res = await request(app).put('/api/produtos/507f1f77bcf86cd799439011').send({ nome: 'Caneta Azul', precoVenda: 6 })
     expect(res.status).toBe(200)
     expect(res.body.produto.nome).toBe('Caneta Azul')
   })
 
   test('registra log preco_alterado quando preço muda', async () => {
-    Produto.findById.mockResolvedValue({ precoVenda: 5, nome: 'Caneta', _id: 'p1' })
+    Produto.findById.mockResolvedValue({ precoVenda: 5, nome: 'Caneta', _id: '507f1f77bcf86cd799439011' })
     Produto.findByIdAndUpdate = jest.fn().mockReturnValue({
-      populate: jest.fn().mockResolvedValue({ _id: 'p1', precoVenda: 8 }),
+      populate: jest.fn().mockResolvedValue({ _id: '507f1f77bcf86cd799439011', precoVenda: 8 }),
     })
     Log.create.mockResolvedValue({})
-    await request(app).put('/api/produtos/p1').send({ precoVenda: 8 })
+    await request(app).put('/api/produtos/507f1f77bcf86cd799439011').send({ precoVenda: 8 })
     expect(Log.create).toHaveBeenCalledWith(expect.objectContaining({ acao: 'preco_alterado' }))
   })
 
   test('404 quando produto não existe', async () => {
     Produto.findById.mockResolvedValue(null)
-    const res = await request(app).put('/api/produtos/inexistente').send({ precoVenda: 5 })
+    const res = await request(app).put('/api/produtos/507f1f77bcf86cd799439099').send({ precoVenda: 5 })
     expect(res.status).toBe(404)
   })
 })
@@ -152,10 +152,10 @@ describe('PUT /api/produtos/:id', () => {
 describe('DELETE /api/produtos/:id', () => {
   test('200 soft delete — não verifica existência, apenas desativa', async () => {
     // O controller não verifica se o produto existe, apenas faz findByIdAndUpdate
-    Produto.findByIdAndUpdate = jest.fn().mockResolvedValue({ _id: 'p1', ativo: false })
-    const res = await request(app).delete('/api/produtos/p1')
+    Produto.findByIdAndUpdate = jest.fn().mockResolvedValue({ _id: '507f1f77bcf86cd799439011', ativo: false })
+    const res = await request(app).delete('/api/produtos/507f1f77bcf86cd799439011')
     expect(res.status).toBe(200)
     expect(res.body.mensagem).toMatch(/removido/i)
-    expect(Produto.findByIdAndUpdate).toHaveBeenCalledWith('p1', { ativo: false })
+    expect(Produto.findByIdAndUpdate).toHaveBeenCalledWith('507f1f77bcf86cd799439011', { ativo: false })
   })
 })

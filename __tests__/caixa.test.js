@@ -63,7 +63,7 @@ describe('POST /api/caixa/abrir', () => {
     Caixa.findOne.mockResolvedValue({ _id: 'cx1', status: 'aberto' })
     const res = await request(app).post('/api/caixa/abrir').send({ saldoInicial: 0 })
     expect(res.status).toBe(400)
-    expect(res.body.mensagem).toMatch(/já existe/i)
+    expect(res.body.mensagem).toMatch(/já tem um caixa aberto/i)
     expect(Caixa.create).not.toHaveBeenCalled()
   })
 })
@@ -81,7 +81,7 @@ describe('PUT /api/caixa/fechar', () => {
     Caixa.findOne.mockResolvedValue(caixa)
     Log.create.mockResolvedValue({})
     // saldoFinal = 100 + 300 - 50 = 350 | diferença = 340 - 350 = -10
-    const res = await request(app).put('/api/caixa/fechar').send({ saldoContado: 340 })
+    const res = await request(app).put('/api/caixa/cx1/fechar').send({ saldoContado: 340 })
     expect(res.status).toBe(200)
     expect(caixa.status).toBe('fechado')
     expect(caixa.saldoFinal).toBe(350)
@@ -94,16 +94,16 @@ describe('PUT /api/caixa/fechar', () => {
     const caixa = { _id: 'cx1', saldoInicial: 100, totalVendas: 200, sangrias: [], save: jest.fn() }
     Caixa.findOne.mockResolvedValue(caixa)
     Log.create.mockResolvedValue({})
-    await request(app).put('/api/caixa/fechar').send({ saldoContado: 320 })
+    await request(app).put('/api/caixa/cx1/fechar').send({ saldoContado: 320 })
     // saldoFinal = 300, diferenca = 20
     expect(caixa.diferenca).toBe(20)
   })
 
   test('400 quando não há caixa aberto', async () => {
     Caixa.findOne.mockResolvedValue(null)
-    const res = await request(app).put('/api/caixa/fechar').send({ saldoContado: 100 })
+    const res = await request(app).put('/api/caixa/cx1/fechar').send({ saldoContado: 100 })
     expect(res.status).toBe(400)
-    expect(res.body.mensagem).toMatch(/nenhum caixa aberto/i)
+    expect(res.body.mensagem).toMatch(/não encontrado ou já fechado/i)
   })
 })
 
@@ -129,6 +129,6 @@ describe('POST /api/caixa/sangria', () => {
     Caixa.findOne.mockResolvedValue(null)
     const res = await request(app).post('/api/caixa/sangria').send({ valor: 50, motivo: 'Teste' })
     expect(res.status).toBe(400)
-    expect(res.body.mensagem).toMatch(/nenhum caixa aberto/i)
+    expect(res.body.mensagem).toMatch(/não tem um caixa aberto/i)
   })
 })

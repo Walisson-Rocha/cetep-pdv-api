@@ -1,11 +1,12 @@
 const mongoose = require('mongoose')
+const logger = require('./logger')
 
 const connectDB = async () => {
   try {
     const conn = await mongoose.connect(process.env.MONGO_URI)
-    console.log(`✅ MongoDB conectado: ${conn.connection.host}`)
+    logger.info(`MongoDB conectado: ${conn.connection.host}`)
   } catch (error) {
-    console.error(`❌ Erro MongoDB: ${error.message}`)
+    logger.error(`Erro MongoDB: ${error.message}`)
     throw error
   }
 }

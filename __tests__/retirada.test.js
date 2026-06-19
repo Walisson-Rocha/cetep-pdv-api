@@ -28,9 +28,12 @@ beforeEach(() => jest.clearAllMocks())
 describe('GET /api/retiradas', () => {
   test('200 retorna retiradas do mês', async () => {
     const retiradas = [{ _id: 'r1', total: 50, mes: 202605 }]
+    Retirada.countDocuments.mockResolvedValue(1)
     Retirada.find.mockReturnValue({
       populate: jest.fn().mockReturnThis(),
-      sort: jest.fn().mockResolvedValue(retiradas),
+      sort: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockResolvedValue(retiradas),
     })
     const res = await request(app).get('/api/retiradas?mes=202605')
     expect(res.status).toBe(200)

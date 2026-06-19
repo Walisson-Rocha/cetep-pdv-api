@@ -1,15 +1,30 @@
 require('dotenv').config()
+const http = require('http')
 const express = require('express')
 const cors = require('cors')
 const morgan = require('morgan')
+const helmet = require('helmet')
 const rateLimit = require('express-rate-limit')
 const connectDB = require('./config/database')
+const logger = require('./config/logger')
+const socket = require('./config/socket')
+
+if (!process.env.JWT_SECRET) {
+  if (process.env.NODE_ENV === 'production') {
+    logger.error('JWT_SECRET não definido. Encerrando — esta variável é obrigatória em produção.')
+    process.exit(1)
+  }
+  logger.warn('JWT_SECRET não definido — usando valor temporário apenas para desenvolvimento.')
+  process.env.JWT_SECRET = 'dev-only-insecure-secret'
+}
 
 const app = express()
 
 app.set('trust proxy', 1)
 
 connectDB()
+
+app.use(helmet())
 
 // Rate limiting global
 const limiterGeral = rateLimit({
@@ -34,22 +49,23 @@ const allowedOrigins = [
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
 ]
 
-app.use(cors({
-  origin: (origin, callback) => {
-    // Permite ausência de origin (ex: curl, apps mobile) e IPs da rede local
-    if (!origin) return callback(null, true)
-    if (allowedOrigins.includes(origin)) return callback(null, true)
-    // Permite qualquer origem 192.168.x.x em desenvolvimento
-    if (process.env.NODE_ENV !== 'production' && /^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/.test(origin)) {
-      return callback(null, true)
-    }
-    callback(new Error('Origem não permitida pelo CORS'))
-  },
-  credentials: true,
-}))
+const corsOriginCheck = (origin, callback) => {
+  // Permite ausência de origin (ex: curl, apps mobile) e IPs da rede local
+  if (!origin) return callback(null, true)
+  if (allowedOrigins.includes(origin)) return callback(null, true)
+  // Permite qualquer origem 192.168.x.x em desenvolvimento
+  if (process.env.NODE_ENV !== 'production' && /^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/.test(origin)) {
+    return callback(null, true)
+  }
+  callback(new Error('Origem não permitida pelo CORS'))
+}
+
+app.use(cors({ origin: corsOriginCheck, credentials: true }))
 
 app.use(express.json({ limit: '8mb' }))
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'))
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev', {
+  stream: { write: (msg) => logger.http(msg.trim()) },
+}))
 app.use(limiterGeral)
 
 app.use('/api/auth/login', limiterLogin)
@@ -92,7 +108,7 @@ app.get('/api/backup', require('./middleware/auth.middleware').protect, async (r
     res.setHeader('Content-Type', 'application/json')
     res.json({ geradoEm: agora, produtos, clientes, vendas, caixas, categorias })
   } catch (error) {
-    console.error('Erro no backup:', error)
+    logger.error('Erro no backup:', error)
     res.status(500).json({ mensagem: 'Erro ao gerar backup' })
   }
 })
@@ -102,8 +118,8 @@ app.use((req, res) => {
 })
 
 // Handler global de erros (nunca expõe detalhes internos em produção)
-app.use((err, req, res, next) => {
-  console.error(err.stack)
+app.use((err, req, res, _next) => {
+  logger.error(err.stack || err.message)
   const status = err.status || 500
   const mensagem = process.env.NODE_ENV === 'production'
     ? (status < 500 ? err.message : 'Erro interno do servidor')
@@ -111,11 +127,36 @@ app.use((err, req, res, next) => {
   res.status(status).json({ mensagem })
 })
 
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled Rejection:', reason)
+})
+
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught Exception:', err)
+  process.exit(1)
+})
+
 if (require.main === module) {
   const PORT = process.env.PORT || 5000
-  app.listen(PORT, () => {
-    console.log(`Cetep PDV API rodando na porta ${PORT}`)
+  const httpServer = http.createServer(app)
+  socket.init(httpServer, { origin: corsOriginCheck, credentials: true })
+  httpServer.listen(PORT, () => {
+    logger.info(`Cetep PDV API rodando na porta ${PORT}`)
   })
+  require('./config/backup').iniciar()
+
+  const shutdown = (signal) => {
+    logger.info(`${signal} recebido — encerrando servidor...`)
+    httpServer.close(async () => {
+      const mongoose = require('mongoose')
+      await mongoose.connection.close()
+      logger.info('Servidor e conexão MongoDB encerrados.')
+      process.exit(0)
+    })
+    setTimeout(() => process.exit(1), 10000).unref()
+  }
+  process.on('SIGTERM', () => shutdown('SIGTERM'))
+  process.on('SIGINT', () => shutdown('SIGINT'))
 }
 
 module.exports = app

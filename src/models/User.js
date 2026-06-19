@@ -21,6 +21,7 @@ const userSchema = new mongoose.Schema({
   dataDesligamento: { type: Date },
   ativo:            { type: Boolean, default: true },
   ultimoAcesso:     { type: Date },
+  tokenVersion:     { type: Number, default: 0 },
 }, { timestamps: true })
 
 userSchema.pre('save', async function (next) {

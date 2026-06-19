@@ -12,7 +12,7 @@ const logSchema = new mongoose.Schema({
       'produto_criado', 'produto_editado', 'preco_alterado',
       'caixa_aberto', 'caixa_fechado', 'sangria',
       'cliente_criado', 'cliente_editado',
-      'despesa_criada', 'usuario_criado', 'usuario_editado',
+      'despesa_criada', 'usuario_criado', 'usuario_editado', 'usuario_desativado',
       'retirada_criada'
     ],
     required: true
