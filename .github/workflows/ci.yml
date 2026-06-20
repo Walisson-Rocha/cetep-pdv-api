@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
+      MONGO_URI: ${{ secrets.MONGO_URI_TEST }}
+      JWT_SECRET: test-secret-key-not-for-production
+      JWT_EXPIRES_IN: 7d
+      FRONTEND_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test com cobertura
+        run: npm test -- --coverage
