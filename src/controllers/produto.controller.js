@@ -16,6 +16,7 @@ const listar = async (req, res) => {
     if (categoria) filtro.categoria = categoria
     const produtos = await Produto.find(filtro)
       .populate('categoria', 'nome cor icone')
+      .populate('fornecedor', 'nome')
       .sort({ nome: 1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)

@@ -14,7 +14,14 @@ const produtoSchema = new mongoose.Schema({
   estoqueMaximo: { type: Number, default: 100 },
   unidade: { type: String, enum: ['un', 'kg', 'g', 'l', 'ml', 'cx', 'pct'], default: 'un' },
   validade: { type: Date, default: null },
+  fornecedor: { type: mongoose.Schema.Types.ObjectId, ref: 'Fornecedor', required: true },
   descricao: { type: String, trim: true },
+  promocao: {
+    ativa: { type: Boolean, default: false },
+    desconto: { type: Number, default: 0, min: 0, max: 100 },
+    dataInicio: { type: Date, default: null },
+    dataFim: { type: Date, default: null },
+  },
   ativo: { type: Boolean, default: true }
 }, {
   timestamps: true,
