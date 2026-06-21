@@ -124,4 +124,21 @@ const alterarSenha = async (req, res) => {
   }
 }
 
-module.exports = { login, refresh, me, logout, alterarSenha }
+const atualizarPerfil = async (req, res) => {
+  try {
+    const { nome } = req.body
+    if (!nome?.trim())
+      return res.status(400).json({ mensagem: 'Nome é obrigatório' })
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { $set: { nome: nome.trim() } },
+      { new: true, runValidators: true }
+    )
+    res.json({ usuario: { id: user._id, nome: user.nome, email: user.email, perfil: user.perfil } })
+  } catch (error) {
+    logger.error('Erro ao atualizar perfil:', error)
+    res.status(500).json({ mensagem: 'Erro ao atualizar perfil' })
+  }
+}
+
+module.exports = { login, refresh, me, logout, alterarSenha, atualizarPerfil }
