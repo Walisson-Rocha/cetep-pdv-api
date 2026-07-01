@@ -35,6 +35,7 @@ const vendaSchema = new mongoose.Schema({
   colaborador: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   caixa: { type: mongoose.Schema.Types.ObjectId, ref: 'Caixa', required: true },
   vendedor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  observacao: { type: String, default: '' },
   cancelada: { type: Boolean, default: false },
   motivoCancelamento: { type: String },
   canceladaPor: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

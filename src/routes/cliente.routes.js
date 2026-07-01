@@ -63,6 +63,49 @@ router.put('/:id', authorize('admin', 'gerente'), async (req, res) => {
   }
 })
 
+router.get('/aniversariantes', async (req, res) => {
+  try {
+    const { periodo = 'hoje' } = req.query
+    const hoje = new Date()
+
+    const todos = await Cliente.find(
+      { ativo: true, dataNascimento: { $exists: true, $ne: null } },
+      'nome telefone whatsapp dataNascimento'
+    ).lean()
+
+    let aniversariantes
+    if (periodo === 'mes') {
+      const mes = hoje.getUTCMonth()
+      aniversariantes = todos.filter(c => new Date(c.dataNascimento).getUTCMonth() === mes)
+    } else if (periodo === 'semana') {
+      const proximos = []
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(hoje)
+        d.setUTCDate(d.getUTCDate() + i)
+        proximos.push({ mes: d.getUTCMonth(), dia: d.getUTCDate() })
+      }
+      aniversariantes = todos.filter(c => {
+        const d = new Date(c.dataNascimento)
+        return proximos.some(p => p.mes === d.getUTCMonth() && p.dia === d.getUTCDate())
+      })
+    } else {
+      // hoje (padrão)
+      const mes = hoje.getUTCMonth()
+      const dia = hoje.getUTCDate()
+      aniversariantes = todos.filter(c => {
+        const d = new Date(c.dataNascimento)
+        return d.getUTCMonth() === mes && d.getUTCDate() === dia
+      })
+    }
+
+    aniversariantes.sort((a, b) => a.nome.localeCompare(b.nome))
+    res.json({ aniversariantes })
+  } catch (error) {
+    logger.error('Erro ao buscar aniversariantes:', error)
+    res.status(500).json({ mensagem: 'Erro ao buscar aniversariantes' })
+  }
+})
+
 router.get('/:id/pontos', async (req, res) => {
   try {
     const config = await Configuracao.findOne().lean()

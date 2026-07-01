@@ -11,9 +11,9 @@ const Configuracao = require('../models/Configuracao')
 
 const registrar = async (req, res) => {
   try {
-    const { itens, formaPagamento, formasPagamento = [], clienteId, colaboradorId, desconto = 0, troco = 0, pontosResgatados = 0 } = req.body
-    const caixa = await Caixa.findOne({ status: 'aberto', abertoPor: req.user._id })
-    if (!caixa) return res.status(400).json({ mensagem: 'Você não tem um caixa aberto.' })
+    const { itens, formaPagamento, formasPagamento = [], clienteId, colaboradorId, vendedorId, desconto = 0, troco = 0, pontosResgatados = 0, observacao = '' } = req.body
+    const caixa = await Caixa.findOne({ status: 'aberto' })
+    if (!caixa) return res.status(400).json({ mensagem: 'Não há caixa aberto. Solicite ao gerente que abra o caixa.' })
     const config = await Configuracao.findOne().lean()
     const permitirEstoqueNegativo = config?.estoqueNegativo ?? false
     let subtotal = 0
@@ -68,10 +68,11 @@ const registrar = async (req, res) => {
     const venda = await Venda.create({
       itens: itensCompletos, subtotal, desconto, total,
       formaPagamento, formasPagamento, troco,
+      observacao: observacao.trim(),
       cliente: clienteId || null,
       colaborador: colaboradorId || null,
       caixa: caixa._id,
-      vendedor: req.user._id
+      vendedor: vendedorId || req.user._id
     })
     for (const item of itensCompletos) {
       const produto = produtoMap.get(item.produto.toString())

@@ -5,8 +5,8 @@ const Log = require('../models/Log')
 
 const abrirCaixa = async (req, res) => {
   try {
-    const caixaAberto = await Caixa.findOne({ status: 'aberto', abertoPor: req.user._id })
-    if (caixaAberto) return res.status(400).json({ mensagem: 'Você já tem um caixa aberto' })
+    const caixaAberto = await Caixa.findOne({ status: 'aberto' })
+    if (caixaAberto) return res.status(400).json({ mensagem: 'Já existe um caixa aberto. Feche-o antes de abrir um novo.' })
     const { saldoInicial = 0 } = req.body
     const caixa = await Caixa.create({ abertoPor: req.user._id, saldoInicial })
     await Log.create({
@@ -55,8 +55,8 @@ const fecharCaixa = async (req, res) => {
 const registrarSangria = async (req, res) => {
   try {
     const { valor, motivo } = req.body
-    const caixa = await Caixa.findOne({ status: 'aberto', abertoPor: req.user._id })
-    if (!caixa) return res.status(400).json({ mensagem: 'Você não tem um caixa aberto' })
+    const caixa = await Caixa.findOne({ status: 'aberto' })
+    if (!caixa) return res.status(400).json({ mensagem: 'Não há caixa aberto para registrar sangria' })
     caixa.sangrias.push({ valor, motivo, registradoPor: req.user._id })
     await caixa.save()
     await Log.create({
@@ -75,7 +75,7 @@ const registrarSangria = async (req, res) => {
 
 const caixaAtual = async (req, res) => {
   try {
-    const caixa = await Caixa.findOne({ status: 'aberto', abertoPor: req.user._id }).populate('abertoPor', 'nome')
+    const caixa = await Caixa.findOne({ status: 'aberto' }).populate('abertoPor', 'nome')
     res.json({ caixa: caixa || null })
   } catch (error) {
     logger.error('Erro ao buscar caixa:', error)

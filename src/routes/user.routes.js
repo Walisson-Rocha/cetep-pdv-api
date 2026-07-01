@@ -38,6 +38,17 @@ function validarEndereco(body) {
     .map(c => `Campo de endereço obrigatório: ${c}`)
 }
 
+// Listagem simplificada de usuários ativos — acessível a qualquer perfil autenticado
+router.get('/vendedores', async (req, res) => {
+  try {
+    const usuarios = await User.find({ ativo: true }, 'nome perfil').sort({ nome: 1 })
+    res.json({ usuarios })
+  } catch (error) {
+    logger.error('Erro ao buscar vendedores:', error)
+    res.status(500).json({ mensagem: 'Erro ao buscar vendedores' })
+  }
+})
+
 router.get('/', authorize('admin'), async (req, res) => {
   try {
     if (req.query.all === 'true') {
