@@ -8,6 +8,8 @@ const movimentoEstoqueSchema = new mongoose.Schema({
   estoqueAtual: { type: Number, required: true },
   motivo: { type: String },
   destino: { type: String, trim: true },
+  valorUnitario: { type: Number, default: null },
+  valorTotal: { type: Number, default: null },
   venda: { type: mongoose.Schema.Types.ObjectId, ref: 'Venda', default: null },
   responsavel: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
 }, { timestamps: true })

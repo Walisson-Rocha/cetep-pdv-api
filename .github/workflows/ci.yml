@@ -9,9 +9,16 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+
     env:
       NODE_ENV: test
-      MONGO_URI: ${{ secrets.MONGO_URI_TEST }}
+      MONGO_URI: mongodb://localhost:27017/cetep_test
       JWT_SECRET: test-secret-key-not-for-production
       JWT_EXPIRES_IN: 7d
       FRONTEND_URL: http://localhost:3000

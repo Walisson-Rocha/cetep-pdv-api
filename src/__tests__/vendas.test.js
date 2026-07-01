@@ -1,6 +1,7 @@
 const request = require('supertest')
 const app = require('../server')
 const Categoria = require('../models/Categoria')
+const Fornecedor = require('../models/Fornecedor')
 const Produto = require('../models/Produto')
 const Caixa = require('../models/Caixa')
 const { waitForConnection, clearDB, closeDB } = require('./helpers/db')
@@ -12,8 +13,9 @@ afterAll(async () => { await closeDB() })
 
 const criarProduto = async (overrides = {}) => {
   const categoria = await Categoria.create({ nome: `Cat ${Date.now()}-${Math.random()}`, cor: '#000', icone: '📦' })
+  const fornecedor = await Fornecedor.create({ nome: `Fornecedor ${Date.now()}-${Math.random()}` })
   return Produto.create({
-    nome: overrides.nome || 'Produto Venda', categoria: categoria._id,
+    nome: overrides.nome || 'Produto Venda', categoria: categoria._id, fornecedor: fornecedor._id,
     precoVenda: overrides.precoVenda ?? 10, estoque: overrides.estoque ?? 50,
   })
 }
