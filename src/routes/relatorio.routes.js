@@ -30,6 +30,7 @@ router.get('/vendas', authorize('admin', 'gerente'), async (req, res) => {
     }, {})
     const porVendedor = {}
     const porCategoria = {}
+    const porCategoriaDetalhe = {}
     vendas.forEach(v => {
       const nome = v.vendedor?.nome || 'Sem nome'
       const comissaoPct = comissaoAtiva ? (v.vendedor?.comissao ?? 0) : 0
@@ -43,9 +44,15 @@ router.get('/vendas', authorize('admin', 'gerente'), async (req, res) => {
         if (!porCategoria[catNome]) porCategoria[catNome] = { total: 0, quantidade: 0, icone: cat?.icone || '📦' }
         porCategoria[catNome].total += item.subtotal || 0
         porCategoria[catNome].quantidade += item.quantidade || 0
+        // detalhe por produto dentro de cada categoria
+        if (!porCategoriaDetalhe[catNome]) porCategoriaDetalhe[catNome] = {}
+        const prodNome = item.nomeProduto || 'Produto'
+        if (!porCategoriaDetalhe[catNome][prodNome]) porCategoriaDetalhe[catNome][prodNome] = { quantidade: 0, total: 0 }
+        porCategoriaDetalhe[catNome][prodNome].quantidade += item.quantidade || 0
+        porCategoriaDetalhe[catNome][prodNome].total += item.subtotal || 0
       })
     })
-    res.json({ total, quantidade: vendas.length, porFormaPagamento: porForma, porVendedor, porCategoria, comissaoAtiva })
+    res.json({ total, quantidade: vendas.length, porFormaPagamento: porForma, porVendedor, porCategoria, porCategoriaDetalhe, comissaoAtiva })
   } catch (error) {
     logger.error('Erro ao gerar relatório de vendas:', error)
     res.status(500).json({ mensagem: 'Erro ao gerar relatório de vendas' })
