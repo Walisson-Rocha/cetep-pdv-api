@@ -3,6 +3,7 @@ const express = require('express')
 const router = express.Router()
 const Produto = require('../models/Produto')
 const MovimentoEstoque = require('../models/MovimentoEstoque')
+const Lote = require('../models/Lote')
 const Log = require('../models/Log')
 const Configuracao = require('../models/Configuracao')
 const { protect, authorize } = require('../middleware/auth.middleware')
@@ -29,7 +30,7 @@ router.get('/historico', async (req, res) => {
 
 router.post('/entrada', authorize('admin', 'gerente', 'estoquista'), async (req, res) => {
   try {
-    const { produtoId, quantidade, motivo = 'Entrada manual', destino, valorUnitario } = req.body
+    const { produtoId, quantidade, motivo = 'Entrada manual', destino, valorUnitario, dataValidade, loteNumero, notaFiscal, fornecedor } = req.body
     if (!produtoId) return res.status(400).json({ mensagem: 'Produto é obrigatório' })
     if (!quantidade || quantidade <= 0) {
       return res.status(400).json({ mensagem: 'Quantidade deve ser maior que zero' })
@@ -37,16 +38,35 @@ router.post('/entrada', authorize('admin', 'gerente', 'estoquista'), async (req,
     const produto = await Produto.findById(produtoId)
     if (!produto) return res.status(404).json({ mensagem: 'Produto não encontrado' })
     const estoqueAnterior = produto.estoque
-    produto.estoque += Number(quantidade)
-    await produto.save()
+    const estoqueAtual = estoqueAnterior + Number(quantidade)
+    await Produto.findByIdAndUpdate(produtoId, { $inc: { estoque: Number(quantidade) } })
+
+    let lote = null
+    if (dataValidade) {
+      lote = await Lote.create({
+        produto: produto._id,
+        dataValidade: new Date(dataValidade),
+        loteNumero: loteNumero || '',
+        notaFiscal: notaFiscal || '',
+        fornecedor: fornecedor || '',
+        quantidadeInicial: Number(quantidade),
+        quantidade: Number(quantidade),
+        precoCusto: valorUnitario ? Number(valorUnitario) : 0,
+        ativo: true,
+      })
+    }
+
     const vUnit = valorUnitario != null ? Number(valorUnitario) : null
+    const motivoFinal = dataValidade
+      ? `${motivo} — Lote: ${loteNumero || 'S/N'} val. ${new Date(dataValidade).toLocaleDateString('pt-BR')}`
+      : motivo
     const movimento = await MovimentoEstoque.create({
       produto: produto._id,
       tipo: 'entrada',
       quantidade: Number(quantidade),
       estoqueAnterior,
-      estoqueAtual: produto.estoque,
-      motivo,
+      estoqueAtual,
+      motivo: motivoFinal,
       destino: destino || undefined,
       valorUnitario: vUnit,
       valorTotal: vUnit != null ? vUnit * Number(quantidade) : null,
@@ -56,10 +76,10 @@ router.post('/entrada', authorize('admin', 'gerente', 'estoquista'), async (req,
       usuario: req.user._id,
       nomeUsuario: req.user.nome,
       acao: 'estoque_entrada',
-      detalhes: `${produto.nome}: +${quantidade} un`,
+      detalhes: `${produto.nome}: +${quantidade} un${dataValidade ? ` (val. ${new Date(dataValidade).toLocaleDateString('pt-BR')})` : ''}`,
       referencia: produto._id
     })
-    res.json({ movimento, produto })
+    res.json({ movimento, produto: { ...produto.toObject(), estoque: estoqueAtual }, lote })
   } catch (error) {
     logger.error('Erro ao registrar entrada de estoque:', error)
     res.status(500).json({ mensagem: 'Erro ao registrar entrada de estoque' })
@@ -85,14 +105,14 @@ router.post('/saida', authorize('admin', 'gerente', 'estoquista'), async (req, r
       })
     }
     const estoqueAnterior = produto.estoque
-    produto.estoque -= Number(quantidade)
-    await produto.save()
+    const estoqueAtual = produto.estoque - Number(quantidade)
+    await Produto.findByIdAndUpdate(produtoId, { $inc: { estoque: -Number(quantidade) } })
     const movimento = await MovimentoEstoque.create({
       produto: produto._id,
       tipo: 'saida',
       quantidade: Number(quantidade),
       estoqueAnterior,
-      estoqueAtual: produto.estoque,
+      estoqueAtual,
       motivo,
       destino: destino || undefined,
       responsavel: req.user._id

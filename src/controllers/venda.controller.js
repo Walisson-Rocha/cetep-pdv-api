@@ -4,6 +4,7 @@ const Produto = require('../models/Produto')
 const Venda = require('../models/Venda')
 const Caixa = require('../models/Caixa')
 const MovimentoEstoque = require('../models/MovimentoEstoque')
+const Lote = require('../models/Lote')
 const Cliente = require('../models/Cliente')
 const Retirada = require('../models/Retirada')
 const Log = require('../models/Log')
@@ -77,15 +78,28 @@ const registrar = async (req, res) => {
     for (const item of itensCompletos) {
       const produto = produtoMap.get(item.produto.toString())
       const estoqueAnterior = produto.estoque
-      produto.estoque -= item.quantidade
-      await produto.save()
+      const estoqueAtual = produto.estoque - item.quantidade
+      await Produto.findByIdAndUpdate(produto._id, { $inc: { estoque: -item.quantidade } })
       await MovimentoEstoque.create({
         produto: produto._id, tipo: 'saida',
         quantidade: item.quantidade,
-        estoqueAnterior, estoqueAtual: produto.estoque,
+        estoqueAnterior, estoqueAtual,
         motivo: `Venda #${venda.numero}`,
         venda: venda._id, responsavel: req.user._id
       })
+      // FEFO: deduz dos lotes mais antigos primeiro
+      const lotes = await Lote.find({ produto: produto._id, ativo: true, quantidade: { $gt: 0 } }).sort({ dataValidade: 1 })
+      if (lotes.length > 0) {
+        let restante = item.quantidade
+        for (const lote of lotes) {
+          if (restante <= 0) break
+          const deduzir = Math.min(lote.quantidade, restante)
+          lote.quantidade -= deduzir
+          if (lote.quantidade === 0) lote.ativo = false
+          await lote.save()
+          restante -= deduzir
+        }
+      }
     }
     if (clienteId && (formaPagamento === 'fiado' || formaPagamento === 'misto')) {
       const valorFiado = formaPagamento === 'misto'
@@ -165,12 +179,12 @@ const cancelar = async (req, res) => {
       const produto = await Produto.findById(item.produto)
       if (produto) {
         const estoqueAnterior = produto.estoque
-        produto.estoque += item.quantidade
-        await produto.save()
+        const estoqueAtual = produto.estoque + item.quantidade
+        await Produto.findByIdAndUpdate(produto._id, { $inc: { estoque: item.quantidade } })
         await MovimentoEstoque.create({
           produto: produto._id, tipo: 'entrada',
           quantidade: item.quantidade,
-          estoqueAnterior, estoqueAtual: produto.estoque,
+          estoqueAnterior, estoqueAtual,
           motivo: `Cancelamento venda #${venda.numero}`,
           venda: venda._id, responsavel: req.user._id
         })
