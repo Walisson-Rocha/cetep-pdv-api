@@ -5,6 +5,7 @@ const Venda = require('../models/Venda')
 const Produto = require('../models/Produto')
 const Log = require('../models/Log')
 const Configuracao = require('../models/Configuracao')
+const Cliente = require('../models/Cliente')
 const { protect, authorize } = require('../middleware/auth.middleware')
 
 router.use(protect)
@@ -59,6 +60,67 @@ router.get('/vendas', authorize('admin', 'gerente'), async (req, res) => {
   }
 })
 
+router.get('/clientes', authorize('admin', 'gerente'), async (req, res) => {
+  try {
+    const { inicio, fim } = req.query
+    const filtro = { cancelada: false }
+    if (inicio) filtro.createdAt = { $gte: new Date(inicio) }
+    if (fim) filtro.createdAt = { ...filtro.createdAt, $lte: new Date(fim) }
+
+    const [vendas, clientes] = await Promise.all([
+      Venda.find({ ...filtro, cliente: { $exists: true, $ne: null } })
+        .select('cliente total createdAt')
+        .lean(),
+      Cliente.find({ ativo: true }).lean(),
+    ])
+
+    const porCliente = {}
+    vendas.forEach(v => {
+      const id = v.cliente?.toString()
+      if (!id) return
+      if (!porCliente[id]) porCliente[id] = { totalGasto: 0, qtdCompras: 0, ultimaCompra: null }
+      porCliente[id].totalGasto += v.total
+      porCliente[id].qtdCompras++
+      if (!porCliente[id].ultimaCompra || v.createdAt > porCliente[id].ultimaCompra) {
+        porCliente[id].ultimaCompra = v.createdAt
+      }
+    })
+
+    const DIAS_INATIVO = 60
+    const agora = new Date()
+    const resultado = clientes.map(c => {
+      const stats = porCliente[c._id.toString()] || { totalGasto: 0, qtdCompras: 0, ultimaCompra: null }
+      const diasSemComprar = stats.ultimaCompra
+        ? Math.floor((agora.getTime() - new Date(stats.ultimaCompra).getTime()) / (1000 * 60 * 60 * 24))
+        : null
+      return {
+        _id: c._id,
+        nome: c.nome,
+        telefone: c.whatsapp || c.telefone || '',
+        saldoFiado: c.saldoFiado,
+        pontos: c.pontos,
+        totalGasto: parseFloat(stats.totalGasto.toFixed(2)),
+        qtdCompras: stats.qtdCompras,
+        ultimaCompra: stats.ultimaCompra,
+        diasSemComprar,
+        inativo: diasSemComprar !== null ? diasSemComprar >= DIAS_INATIVO : stats.qtdCompras === 0,
+        ticketMedio: stats.qtdCompras > 0 ? parseFloat((stats.totalGasto / stats.qtdCompras).toFixed(2)) : 0,
+      }
+    })
+
+    const topCompradores = [...resultado].sort((a, b) => b.totalGasto - a.totalGasto).slice(0, 20)
+    const inativos = resultado.filter(c => c.inativo).sort((a, b) => (b.diasSemComprar ?? 999) - (a.diasSemComprar ?? 999))
+    const semCompras = resultado.filter(c => c.qtdCompras === 0).length
+    const totalClientes = clientes.length
+    const totalGastoGeral = resultado.reduce((s, c) => s + c.totalGasto, 0)
+
+    res.json({ topCompradores, inativos, totalClientes, totalGastoGeral: parseFloat(totalGastoGeral.toFixed(2)), semCompras })
+  } catch (error) {
+    logger.error('Erro ao gerar relatório de clientes:', error)
+    res.status(500).json({ mensagem: 'Erro ao gerar relatório de clientes' })
+  }
+})
+
 router.get('/logs', authorize('admin', 'gerente'), async (req, res) => {
   try {
     const { page = 1, limit = 50 } = req.query
@@ -71,6 +133,73 @@ router.get('/logs', authorize('admin', 'gerente'), async (req, res) => {
   } catch (error) {
     logger.error('Erro ao buscar logs:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar logs' })
+  }
+})
+
+router.get('/lucratividade', authorize('admin', 'gerente'), async (req, res) => {
+  try {
+    const { inicio, fim } = req.query
+    const filtro = { cancelada: false }
+    if (inicio) filtro.createdAt = { $gte: new Date(inicio) }
+    if (fim) filtro.createdAt = { ...filtro.createdAt, $lte: new Date(fim) }
+
+    const vendas = await Venda.find(filtro)
+      .populate({ path: 'itens.produto', select: 'precoCusto categoria', populate: { path: 'categoria', select: 'nome icone' } })
+      .lean()
+
+    const porProduto = {}
+    const porCategoria = {}
+
+    vendas.forEach(v => {
+      v.itens.forEach(item => {
+        const nome = item.nomeProduto || 'Produto'
+        const receita = item.subtotal || 0
+        const precoCusto = item.produto?.precoCusto || 0
+        const custo = precoCusto * (item.quantidade || 0)
+        const lucro = receita - custo
+        const cat = item.produto?.categoria
+        const catNome = cat?.nome || 'Sem categoria'
+        const catIcone = cat?.icone || '📦'
+
+        if (!porProduto[nome]) porProduto[nome] = { nome, quantidade: 0, receita: 0, custo: 0, lucro: 0, categoria: catNome }
+        porProduto[nome].quantidade += item.quantidade || 0
+        porProduto[nome].receita += receita
+        porProduto[nome].custo += custo
+        porProduto[nome].lucro += lucro
+
+        if (!porCategoria[catNome]) porCategoria[catNome] = { nome: catNome, icone: catIcone, quantidade: 0, receita: 0, custo: 0, lucro: 0 }
+        porCategoria[catNome].quantidade += item.quantidade || 0
+        porCategoria[catNome].receita += receita
+        porCategoria[catNome].custo += custo
+        porCategoria[catNome].lucro += lucro
+      })
+    })
+
+    const produtos = Object.values(porProduto).map(p => ({
+      ...p,
+      receita: parseFloat(p.receita.toFixed(2)),
+      custo: parseFloat(p.custo.toFixed(2)),
+      lucro: parseFloat(p.lucro.toFixed(2)),
+      margem: p.receita > 0 ? parseFloat(((p.lucro / p.receita) * 100).toFixed(1)) : 0,
+    })).sort((a, b) => b.lucro - a.lucro)
+
+    const categorias = Object.values(porCategoria).map(c => ({
+      ...c,
+      receita: parseFloat(c.receita.toFixed(2)),
+      custo: parseFloat(c.custo.toFixed(2)),
+      lucro: parseFloat(c.lucro.toFixed(2)),
+      margem: c.receita > 0 ? parseFloat(((c.lucro / c.receita) * 100).toFixed(1)) : 0,
+    })).sort((a, b) => b.lucro - a.lucro)
+
+    const totalReceita = parseFloat(produtos.reduce((s, p) => s + p.receita, 0).toFixed(2))
+    const totalCusto = parseFloat(produtos.reduce((s, p) => s + p.custo, 0).toFixed(2))
+    const totalLucro = parseFloat(produtos.reduce((s, p) => s + p.lucro, 0).toFixed(2))
+    const margemGeral = totalReceita > 0 ? parseFloat(((totalLucro / totalReceita) * 100).toFixed(1)) : 0
+
+    res.json({ produtos, categorias, totalReceita, totalCusto, totalLucro, margemGeral })
+  } catch (error) {
+    logger.error('Erro ao gerar relatório de lucratividade:', error)
+    res.status(500).json({ mensagem: 'Erro ao gerar relatório' })
   }
 })
 

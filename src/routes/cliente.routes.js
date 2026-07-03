@@ -63,6 +63,19 @@ router.put('/:id', authorize('admin', 'gerente'), async (req, res) => {
   }
 })
 
+router.get('/fiado', authorize('admin', 'gerente', 'caixa'), async (req, res) => {
+  try {
+    const clientes = await Cliente.find({ ativo: true, saldoFiado: { $gt: 0 } })
+      .sort({ saldoFiado: -1 })
+      .lean()
+    const totalDevido = clientes.reduce((s, c) => s + c.saldoFiado, 0)
+    res.json({ clientes, totalDevido })
+  } catch (error) {
+    logger.error('Erro ao buscar fiado:', error)
+    res.status(500).json({ mensagem: 'Erro ao buscar fiado' })
+  }
+})
+
 router.get('/aniversariantes', async (req, res) => {
   try {
     const { periodo = 'hoje' } = req.query

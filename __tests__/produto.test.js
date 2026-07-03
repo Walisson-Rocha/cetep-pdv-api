@@ -2,6 +2,7 @@ jest.mock('../src/config/database')
 jest.mock('../src/models/Produto')
 jest.mock('../src/models/MovimentoEstoque')
 jest.mock('../src/models/Log')
+jest.mock('../src/models/HistoricoPreco')
 jest.mock('../src/middleware/auth.middleware', () => ({
   protect: (req, _res, next) => {
     req.user = { _id: 'usr1', nome: 'Admin', perfil: 'admin' }
@@ -14,12 +15,16 @@ const request = require('supertest')
 const express = require('express')
 const Produto = require('../src/models/Produto')
 const Log = require('../src/models/Log')
+const HistoricoPreco = require('../src/models/HistoricoPreco')
 
 const app = express()
 app.use(express.json())
 app.use('/api/produtos', require('../src/routes/produto.routes'))
 
-beforeEach(() => jest.clearAllMocks())
+beforeEach(() => {
+  jest.clearAllMocks()
+  HistoricoPreco.create.mockResolvedValue({})
+})
 
 // ─── GET /api/produtos ────────────────────────────────────────────────────────
 describe('GET /api/produtos', () => {

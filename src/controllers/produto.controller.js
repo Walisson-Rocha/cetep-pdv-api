@@ -2,6 +2,7 @@ const logger = require('../config/logger')
 const socket = require('../config/socket')
 const Produto = require('../models/Produto')
 const Log = require('../models/Log')
+const HistoricoPreco = require('../models/HistoricoPreco')
 
 const listar = async (req, res) => {
   try {
@@ -80,7 +81,21 @@ const atualizar = async (req, res) => {
   try {
     const produtoAntes = await Produto.findById(req.params.id)
     if (!produtoAntes) return res.status(404).json({ mensagem: 'Produto não encontrado' })
-    if (req.body.precoVenda && req.body.precoVenda !== produtoAntes.precoVenda) {
+    const precoVendaMudou = req.body.precoVenda !== undefined && parseFloat(req.body.precoVenda) !== produtoAntes.precoVenda
+    const precoCustoMudou = req.body.precoCusto !== undefined && parseFloat(req.body.precoCusto) !== produtoAntes.precoCusto
+    if (precoVendaMudou || precoCustoMudou) {
+      await HistoricoPreco.create({
+        produto: produtoAntes._id,
+        nomeProduto: produtoAntes.nome,
+        precoVendaAnterior: produtoAntes.precoVenda,
+        precoVendaNovo: precoVendaMudou ? parseFloat(req.body.precoVenda) : undefined,
+        precoCustoAnterior: produtoAntes.precoCusto,
+        precoCustoNovo: precoCustoMudou ? parseFloat(req.body.precoCusto) : undefined,
+        usuario: req.user._id,
+        nomeUsuario: req.user.nome,
+      })
+    }
+    if (precoVendaMudou) {
       await Log.create({
         usuario: req.user._id,
         nomeUsuario: req.user.nome,
@@ -155,4 +170,17 @@ const reajustarPrecos = async (req, res) => {
   }
 }
 
-module.exports = { listar, buscarPorCodigo, buscarPorId, criar, atualizar, deletar, alertas, reajustarPrecos }
+const historicoPreco = async (req, res) => {
+  try {
+    const historico = await HistoricoPreco.find({ produto: req.params.id })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean()
+    res.json({ historico })
+  } catch (error) {
+    logger.error('Erro ao buscar histórico de preços:', error)
+    res.status(500).json({ mensagem: 'Erro ao buscar histórico' })
+  }
+}
+
+module.exports = { listar, buscarPorCodigo, buscarPorId, criar, atualizar, deletar, alertas, reajustarPrecos, historicoPreco }

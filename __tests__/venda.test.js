@@ -6,6 +6,8 @@ jest.mock('../src/models/MovimentoEstoque')
 jest.mock('../src/models/Cliente')
 jest.mock('../src/models/Log')
 jest.mock('../src/models/Configuracao')
+jest.mock('../src/models/Lote')
+jest.mock('../src/models/Retirada')
 jest.mock('../src/middleware/auth.middleware', () => ({
   protect: (req, _res, next) => {
     req.user = { _id: 'usr1', nome: 'Admin', perfil: 'admin' }
@@ -23,6 +25,7 @@ const MovimentoEstoque = require('../src/models/MovimentoEstoque')
 const Cliente = require('../src/models/Cliente')
 const Log = require('../src/models/Log')
 const Configuracao = require('../src/models/Configuracao')
+const Lote = require('../src/models/Lote')
 
 const app = express()
 app.use(express.json())
@@ -65,6 +68,7 @@ function mockVendaCriada(overrides = {}) {
 beforeEach(() => {
   jest.clearAllMocks()
   Configuracao.findOne.mockReturnValue({ lean: jest.fn().mockResolvedValue(null) })
+  Lote.find.mockReturnValue({ sort: jest.fn().mockResolvedValue([]) })
 })
 
 // ─── POST /api/vendas ─────────────────────────────────────────────────────────
@@ -174,7 +178,7 @@ describe('PUT /api/vendas/:id/cancelar', () => {
     Log.create.mockResolvedValue({})
     const res = await request(app).put('/api/vendas/507f1f77bcf86cd799439051/cancelar').send({ motivo: 'Pedido do cliente' })
     expect(res.status).toBe(200)
-    expect(mockProd.save).toHaveBeenCalled()
+    expect(Produto.findByIdAndUpdate).toHaveBeenCalledWith(mockProd._id, { $inc: { estoque: 2 } })
     expect(venda.cancelada).toBe(true)
     expect(venda.motivoCancelamento).toBe('Pedido do cliente')
   })

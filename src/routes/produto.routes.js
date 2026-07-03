@@ -29,6 +29,7 @@ const validarProdutoAtualizar = [
 
 router.use(protect)
 router.put('/reajuste', authorize('admin', 'gerente'), ctrl.reajustarPrecos)
+router.get('/:id/historico-preco', authorize('admin', 'gerente', 'estoquista'), param('id').isMongoId().withMessage('ID inválido'), validate, ctrl.historicoPreco)
 router.get('/', ctrl.listar)
 router.get('/alertas', ctrl.alertas)
 router.get('/barcode/:codigo', ctrl.buscarPorCodigo)
