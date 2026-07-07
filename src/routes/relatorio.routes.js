@@ -257,6 +257,53 @@ router.get('/consumo-colaborador', authorize('admin', 'gerente'), async (req, re
   }
 })
 
+router.get('/consumo-todos-colaboradores', authorize('admin', 'gerente'), async (req, res) => {
+  try {
+    const { inicio, fim } = req.query
+    const filtro = {}
+    if (inicio) filtro.createdAt = { $gte: new Date(inicio) }
+    if (fim) filtro.createdAt = { ...(filtro.createdAt || {}), $lte: new Date(new Date(fim).setHours(23, 59, 59, 999)) }
+
+    const [colaboradores, retiradas] = await Promise.all([
+      User.find({ perfil: 'colaborador', ativo: true }, 'nome email').sort({ nome: 1 }),
+      Retirada.find(filtro).populate('colaborador', 'nome email').lean(),
+    ])
+
+    const porColab = {}
+    retiradas.forEach(r => {
+      const id = r.colaborador?._id?.toString()
+      if (!id) return
+      if (!porColab[id]) porColab[id] = { colaborador: r.colaborador, totalValor: 0, totalItens: 0, qtdRetiradas: 0, itens: {} }
+      porColab[id].totalValor += r.total
+      porColab[id].qtdRetiradas++
+      r.itens.forEach(item => {
+        porColab[id].totalItens += item.quantidade
+        const nome = item.nomeProduto || 'Produto'
+        if (!porColab[id].itens[nome]) porColab[id].itens[nome] = { nome, quantidade: 0, valor: 0 }
+        porColab[id].itens[nome].quantidade += item.quantidade
+        porColab[id].itens[nome].valor += item.subtotal || 0
+      })
+    })
+
+    const resultado = colaboradores.map(col => {
+      const dados = porColab[col._id.toString()] || { totalValor: 0, totalItens: 0, qtdRetiradas: 0, itens: {} }
+      return {
+        colaborador: { _id: col._id, nome: col.nome, email: col.email },
+        totalValor: parseFloat((dados.totalValor || 0).toFixed(2)),
+        totalItens: dados.totalItens || 0,
+        qtdRetiradas: dados.qtdRetiradas || 0,
+        itensList: Object.values(dados.itens || {}).sort((a, b) => b.valor - a.valor),
+      }
+    }).sort((a, b) => b.totalValor - a.totalValor)
+
+    const totalGeral = parseFloat(resultado.reduce((s, c) => s + c.totalValor, 0).toFixed(2))
+    res.json({ colaboradores: resultado, totalGeral, periodoInicio: inicio || null, periodoFim: fim || null })
+  } catch (error) {
+    logger.error('Erro ao gerar consumo em massa:', error)
+    res.status(500).json({ mensagem: 'Erro ao gerar relatório' })
+  }
+})
+
 router.get('/categorias-por-vendedor', authorize('admin', 'gerente'), async (req, res) => {
   try {
     const { inicio, fim } = req.query
