@@ -55,7 +55,7 @@ const login = async (req, res) => {
     res.json({
       token,
       refreshToken,
-      usuario: { id: user._id, nome: user.nome, email: user.email, perfil: user.perfil }
+      usuario: { id: user._id, nome: user.nome, email: user.email, perfil: user.perfil, acessosExtra: user.acessosExtra || [] }
     })
   } catch (error) {
     logger.error('Erro no login:', error)

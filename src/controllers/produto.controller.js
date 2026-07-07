@@ -48,6 +48,7 @@ const buscarPorId = async (req, res) => {
   try {
     const produto = await Produto.findById(req.params.id)
       .populate('categoria', 'nome cor icone')
+      .populate('componentes.produto', 'nome precoVenda estoque unidade')
     if (!produto) return res.status(404).json({ mensagem: 'Produto não encontrado' })
     res.json({ produto })
   } catch (error) {

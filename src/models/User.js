@@ -22,6 +22,7 @@ const userSchema = new mongoose.Schema({
   ativo:            { type: Boolean, default: true },
   ultimoAcesso:     { type: Date },
   tokenVersion:     { type: Number, default: 0 },
+  acessosExtra:     { type: [String], default: [] },
 }, { timestamps: true })
 
 userSchema.pre('save', async function (next) {

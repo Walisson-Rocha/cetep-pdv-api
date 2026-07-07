@@ -24,7 +24,17 @@ const produtoSchema = new mongoose.Schema({
     dataInicio: { type: Date, default: null },
     dataFim: { type: Date, default: null },
   },
-  ativo: { type: Boolean, default: true }
+  ativo: { type: Boolean, default: true },
+  tipo: { type: String, enum: ['simples', 'combo'], default: 'simples' },
+  componentes: [{
+    produto: { type: mongoose.Schema.Types.ObjectId, ref: 'Produto' },
+    nomeProduto: { type: String, trim: true },
+    quantidade: { type: Number, default: 1, min: 0.01 },
+  }],
+  precosParcelamento: [{
+    rotulo: { type: String, required: true, trim: true },
+    valor: { type: Number, required: true, min: 0 },
+  }],
 }, {
   timestamps: true,
   toJSON: { virtuals: true },

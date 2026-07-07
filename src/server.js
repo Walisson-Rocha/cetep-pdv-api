@@ -86,6 +86,8 @@ app.use('/api/relatorios',   require('./routes/relatorio.routes'))
 app.use('/api/configuracoes', require('./routes/configuracoes.routes'))
 app.use('/api/retiradas',    require('./routes/retirada.routes'))
 app.use('/api/logs',         require('./routes/log.routes'))
+app.use('/api/contas-pagar', require('./routes/contapagar.routes'))
+app.use('/api/comissoes',    require('./routes/comissao.routes'))
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', sistema: 'Cetep PDV API', versao: '1.0.0' })

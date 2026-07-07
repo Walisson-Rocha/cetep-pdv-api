@@ -8,6 +8,7 @@ const Configuracao = require('../models/Configuracao')
 const Cliente = require('../models/Cliente')
 const Retirada = require('../models/Retirada')
 const User = require('../models/User')
+const Despesa = require('../models/Despesa')
 const { protect, authorize } = require('../middleware/auth.middleware')
 
 router.use(protect)
@@ -292,6 +293,123 @@ router.get('/categorias-por-vendedor', authorize('admin', 'gerente'), async (req
   } catch (error) {
     logger.error('Erro ao gerar relatório categorias por vendedor:', error)
     res.status(500).json({ mensagem: 'Erro ao gerar relatório' })
+  }
+})
+
+router.get('/estoque-giro', authorize('admin', 'gerente'), async (req, res) => {
+  try {
+    const { dias = 30 } = req.query
+    const diasNum = Math.min(Math.max(parseInt(dias) || 30, 7), 365)
+    const inicio = new Date()
+    inicio.setDate(inicio.getDate() - diasNum)
+    const [produtos, vendas] = await Promise.all([
+      Produto.find({ ativo: true }).populate('categoria', 'nome icone').lean(),
+      Venda.find({ createdAt: { $gte: inicio }, cancelada: false }).lean()
+    ])
+    const vendidoPorProduto = {}
+    vendas.forEach(v => {
+      v.itens.forEach(item => {
+        const id = item.produto.toString()
+        if (!vendidoPorProduto[id]) vendidoPorProduto[id] = { quantidade: 0, receita: 0 }
+        vendidoPorProduto[id].quantidade += item.quantidade
+        vendidoPorProduto[id].receita += item.subtotal || 0
+      })
+    })
+    const resultado = produtos.map(p => {
+      const vendido = vendidoPorProduto[p._id.toString()] || { quantidade: 0, receita: 0 }
+      const giroDiario = parseFloat((vendido.quantidade / diasNum).toFixed(3))
+      const coberturaDias = giroDiario > 0 ? Math.floor(p.estoque / giroDiario) : null
+      const status = coberturaDias === null ? 'parado' : coberturaDias <= 7 ? 'critico' : coberturaDias <= 30 ? 'baixo' : 'ok'
+      return {
+        _id: p._id, nome: p.nome, categoria: p.categoria,
+        estoque: p.estoque, unidade: p.unidade,
+        qtdVendida: vendido.quantidade,
+        receita: parseFloat(vendido.receita.toFixed(2)),
+        giroDiario, coberturaDias, status
+      }
+    }).sort((a, b) => b.qtdVendida - a.qtdVendida)
+    const parados = resultado.filter(p => p.status === 'parado').length
+    const criticos = resultado.filter(p => p.status === 'critico').length
+    const baixos = resultado.filter(p => p.status === 'baixo').length
+    res.json({ produtos: resultado, totalProdutos: resultado.length, parados, criticos, baixos, perioDias: diasNum })
+  } catch (error) {
+    logger.error('Erro ao gerar relatório de giro de estoque:', error)
+    res.status(500).json({ mensagem: 'Erro ao gerar relatório de giro de estoque' })
+  }
+})
+
+router.get('/dre', authorize('admin', 'gerente'), async (req, res) => {
+  try {
+    const { inicio, fim } = req.query
+    const filtroVenda = { cancelada: false }
+    const filtroCancelada = { cancelada: true }
+    const filtroDespesa = {}
+    if (inicio) {
+      filtroVenda.createdAt = { $gte: new Date(inicio) }
+      filtroCancelada.createdAt = { $gte: new Date(inicio) }
+      filtroDespesa.createdAt = { $gte: new Date(inicio) }
+    }
+    if (fim) {
+      const fimDate = new Date(new Date(fim).setHours(23, 59, 59, 999))
+      filtroVenda.createdAt = { ...(filtroVenda.createdAt || {}), $lte: fimDate }
+      filtroCancelada.createdAt = { ...(filtroCancelada.createdAt || {}), $lte: fimDate }
+      filtroDespesa.createdAt = { ...(filtroDespesa.createdAt || {}), $lte: fimDate }
+    }
+    const [vendas, canceladas, despesas, config] = await Promise.all([
+      Venda.find(filtroVenda)
+        .populate({ path: 'itens.produto', select: 'precoCusto' })
+        .populate('vendedor', 'nome comissao')
+        .lean(),
+      Venda.find(filtroCancelada).lean(),
+      Despesa.find(filtroDespesa).lean(),
+      Configuracao.findOne().lean(),
+    ])
+    const receitaBruta = vendas.reduce((s, v) => s + v.total, 0)
+    const descontos = vendas.reduce((s, v) => s + (v.desconto || 0), 0)
+    const devolucoes = canceladas.reduce((s, v) => s + v.total, 0)
+    const receitaLiquida = receitaBruta - devolucoes
+    let cmv = 0
+    vendas.forEach(v => {
+      v.itens.forEach(item => {
+        cmv += (item.produto?.precoCusto || 0) * (item.quantidade || 0)
+      })
+    })
+    const lucroBruto = receitaLiquida - cmv
+    const comissaoAtiva = config?.comissao?.ativa ?? false
+    let totalComissoes = 0
+    if (comissaoAtiva) {
+      vendas.forEach(v => {
+        const pct = v.vendedor?.comissao || 0
+        totalComissoes += (v.total * pct) / 100
+      })
+    }
+    const despesasOp = despesas.reduce((s, d) => s + d.valor, 0)
+    const despesasPorCategoria = despesas.reduce((acc, d) => {
+      acc[d.categoria] = (acc[d.categoria] || 0) + d.valor
+      return acc
+    }, {})
+    const resultadoOperacional = lucroBruto - despesasOp - totalComissoes
+    const margem = receitaLiquida > 0 ? parseFloat(((resultadoOperacional / receitaLiquida) * 100).toFixed(1)) : 0
+    const margemBruta = receitaLiquida > 0 ? parseFloat(((lucroBruto / receitaLiquida) * 100).toFixed(1)) : 0
+    res.json({
+      receitaBruta: parseFloat(receitaBruta.toFixed(2)),
+      descontos: parseFloat(descontos.toFixed(2)),
+      devolucoes: parseFloat(devolucoes.toFixed(2)),
+      receitaLiquida: parseFloat(receitaLiquida.toFixed(2)),
+      cmv: parseFloat(cmv.toFixed(2)),
+      lucroBruto: parseFloat(lucroBruto.toFixed(2)),
+      margemBruta,
+      despesasOperacionais: parseFloat(despesasOp.toFixed(2)),
+      despesasPorCategoria,
+      comissoes: parseFloat(totalComissoes.toFixed(2)),
+      resultadoOperacional: parseFloat(resultadoOperacional.toFixed(2)),
+      margem,
+      qtdVendas: vendas.length,
+      qtdCanceladas: canceladas.length,
+    })
+  } catch (error) {
+    logger.error('Erro ao gerar DRE:', error)
+    res.status(500).json({ mensagem: 'Erro ao gerar DRE' })
   }
 })
 
