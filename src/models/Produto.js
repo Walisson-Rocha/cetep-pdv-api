@@ -14,7 +14,9 @@ const produtoSchema = new mongoose.Schema({
   estoqueMaximo: { type: Number, default: 100 },
   unidade: { type: String, enum: ['un', 'kg', 'g', 'l', 'ml', 'cx', 'pct'], default: 'un' },
   validade: { type: Date, default: null },
-  fornecedor: { type: mongoose.Schema.Types.ObjectId, ref: 'Fornecedor', required: true },
+  validade2: { type: Date, default: null },
+  validade3: { type: Date, default: null },
+  fornecedor: { type: mongoose.Schema.Types.ObjectId, ref: 'Fornecedor' },
   descricao: { type: String, trim: true },
   promocao: {
     ativa: { type: Boolean, default: false },

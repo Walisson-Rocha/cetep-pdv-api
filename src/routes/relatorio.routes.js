@@ -6,6 +6,8 @@ const Produto = require('../models/Produto')
 const Log = require('../models/Log')
 const Configuracao = require('../models/Configuracao')
 const Cliente = require('../models/Cliente')
+const Retirada = require('../models/Retirada')
+const User = require('../models/User')
 const { protect, authorize } = require('../middleware/auth.middleware')
 
 router.use(protect)
@@ -217,6 +219,79 @@ router.get('/produtos-parados', authorize('admin', 'gerente'), async (req, res) 
   } catch (error) {
     logger.error('Erro ao buscar produtos parados:', error)
     res.status(500).json({ mensagem: 'Erro ao buscar produtos parados' })
+  }
+})
+
+router.get('/consumo-colaborador', authorize('admin', 'gerente'), async (req, res) => {
+  try {
+    const { colaboradorId, inicio, fim } = req.query
+    const colaboradores = await User.find({ perfil: 'colaborador', ativo: true }, 'nome email').sort({ nome: 1 })
+    if (!colaboradorId) {
+      return res.json({ colaboradores, retiradas: [], itens: [], totais: { totalValor: 0, totalItens: 0, qtdRetiradas: 0 } })
+    }
+    const filtro = { colaborador: colaboradorId }
+    if (inicio) filtro.createdAt = { $gte: new Date(inicio) }
+    if (fim) filtro.createdAt = { ...(filtro.createdAt || {}), $lte: new Date(new Date(fim).setHours(23, 59, 59, 999)) }
+    const retiradas = await Retirada.find(filtro)
+      .populate('colaborador', 'nome email')
+      .populate('registradaPor', 'nome')
+      .sort({ createdAt: -1 })
+    const porProduto = {}
+    retiradas.forEach(r => {
+      r.itens.forEach(item => {
+        const nome = item.nomeProduto || 'Produto'
+        if (!porProduto[nome]) porProduto[nome] = { nome, quantidade: 0, valor: 0 }
+        porProduto[nome].quantidade += item.quantidade
+        porProduto[nome].valor += item.subtotal || 0
+      })
+    })
+    const itens = Object.values(porProduto).sort((a, b) => b.valor - a.valor)
+    const totalValor = parseFloat(retiradas.reduce((s, r) => s + r.total, 0).toFixed(2))
+    const totalItens = retiradas.reduce((s, r) => s + r.itens.reduce((q, i) => q + i.quantidade, 0), 0)
+    const colaborador = colaboradores.find(c => c._id.toString() === colaboradorId) || null
+    res.json({ colaboradores, colaborador, retiradas, itens, totais: { totalValor, totalItens, qtdRetiradas: retiradas.length } })
+  } catch (error) {
+    logger.error('Erro ao gerar relatório de consumo:', error)
+    res.status(500).json({ mensagem: 'Erro ao gerar relatório de consumo' })
+  }
+})
+
+router.get('/categorias-por-vendedor', authorize('admin', 'gerente'), async (req, res) => {
+  try {
+    const { inicio, fim } = req.query
+    const filtro = { cancelada: false }
+    if (inicio) filtro.createdAt = { $gte: new Date(inicio) }
+    if (fim) filtro.createdAt = { ...(filtro.createdAt || {}), $lte: new Date(new Date(fim).setHours(23, 59, 59, 999)) }
+    const vendas = await Venda.find(filtro)
+      .populate('vendedor', 'nome')
+      .populate({ path: 'itens.produto', select: 'categoria', populate: { path: 'categoria', select: 'nome icone' } })
+      .sort({ createdAt: -1 })
+    const porVendedorCategoria = {}
+    vendas.forEach(v => {
+      const vendNome = v.vendedor?.nome || 'Sem vendedor'
+      if (!porVendedorCategoria[vendNome]) porVendedorCategoria[vendNome] = {}
+      v.itens.forEach(item => {
+        const cat = item.produto?.categoria
+        const catNome = cat?.nome || 'Sem categoria'
+        const catIcone = cat?.icone || '📦'
+        if (!porVendedorCategoria[vendNome][catNome])
+          porVendedorCategoria[vendNome][catNome] = { nome: catNome, icone: catIcone, total: 0, quantidade: 0 }
+        porVendedorCategoria[vendNome][catNome].total += item.subtotal || 0
+        porVendedorCategoria[vendNome][catNome].quantidade += item.quantidade || 0
+      })
+    })
+    const vendedores = Object.entries(porVendedorCategoria).map(([nome, cats]) => ({
+      nome,
+      categorias: Object.values(cats).sort((a, b) => b.total - a.total).map(c => ({
+        ...c,
+        total: parseFloat(c.total.toFixed(2)),
+      })),
+      totalGeral: parseFloat(Object.values(cats).reduce((s, c) => s + c.total, 0).toFixed(2)),
+    })).sort((a, b) => b.totalGeral - a.totalGeral)
+    res.json({ vendedores, totalVendas: vendas.length })
+  } catch (error) {
+    logger.error('Erro ao gerar relatório categorias por vendedor:', error)
+    res.status(500).json({ mensagem: 'Erro ao gerar relatório' })
   }
 })
 

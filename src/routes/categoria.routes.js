@@ -67,15 +67,20 @@ router.post('/seed', authorize('admin'), async (req, res) => {
 router.put('/:id', authorize('admin'), async (req, res) => {
   try {
     const { nome, cor, icone, ativo } = req.body
-    const cat = await Categoria.findByIdAndUpdate(
-      req.params.id,
-      { nome, cor, icone, ativo },
-      { new: true, runValidators: true }
-    )
+    if (nome !== undefined && !String(nome).trim())
+      return res.status(400).json({ mensagem: 'Nome não pode ser vazio' })
+    const updates = {}
+    if (nome !== undefined) updates.nome = String(nome).trim()
+    if (cor !== undefined) updates.cor = cor
+    if (icone !== undefined) updates.icone = icone
+    if (ativo !== undefined) updates.ativo = ativo
+    const cat = await Categoria.findByIdAndUpdate(req.params.id, { $set: updates }, { new: true })
     if (!cat) return res.status(404).json({ mensagem: 'Categoria não encontrada' })
     res.json({ categoria: cat })
   } catch (error) {
     logger.error('Erro ao atualizar categoria:', error)
+    if (error.code === 11000)
+      return res.status(400).json({ mensagem: 'Já existe uma categoria com esse nome' })
     res.status(500).json({ mensagem: 'Erro ao atualizar categoria' })
   }
 })
