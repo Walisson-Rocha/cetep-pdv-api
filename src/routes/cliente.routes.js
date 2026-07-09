@@ -13,9 +13,10 @@ router.get('/', async (req, res) => {
     const { busca } = req.query
     const filtro = { ativo: true }
     if (busca) {
+      const safe = busca.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').slice(0, 100)
       filtro.$or = [
-        { nome: { $regex: busca, $options: 'i' } },
-        { telefone: { $regex: busca, $options: 'i' } }
+        { nome: { $regex: safe, $options: 'i' } },
+        { telefone: { $regex: safe, $options: 'i' } }
       ]
     }
     const clientes = await Cliente.find(filtro).sort({ nome: 1 })

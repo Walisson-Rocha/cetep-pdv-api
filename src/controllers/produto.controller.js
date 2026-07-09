@@ -9,9 +9,11 @@ const listar = async (req, res) => {
     const { busca, categoria, status, page = 1, limit = 50 } = req.query
     const filtro = { ativo: true }
     if (busca) {
+      const safe = String(busca).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').slice(0, 100)
       filtro.$or = [
-        { nome: { $regex: busca, $options: 'i' } },
-        { codigoBarras: busca }
+        { nome: { $regex: safe, $options: 'i' } },
+        { codigoBarras: busca },
+        { codigosBarras: busca }
       ]
     }
     if (categoria) filtro.categoria = categoria
@@ -33,7 +35,7 @@ const listar = async (req, res) => {
 const buscarPorCodigo = async (req, res) => {
   try {
     const produto = await Produto.findOne({
-      codigoBarras: req.params.codigo,
+      $or: [{ codigoBarras: req.params.codigo }, { codigosBarras: req.params.codigo }],
       ativo: true
     }).populate('categoria', 'nome cor icone')
     if (!produto) return res.status(404).json({ mensagem: 'Produto não encontrado' })

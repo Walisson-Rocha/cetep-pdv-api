@@ -8,14 +8,11 @@ const rateLimit = require('express-rate-limit')
 const connectDB = require('./config/database')
 const logger = require('./config/logger')
 const socket = require('./config/socket')
+const mongoSanitize = require('express-mongo-sanitize')
 
 if (!process.env.JWT_SECRET) {
-  if (process.env.NODE_ENV === 'production') {
-    logger.error('JWT_SECRET não definido. Encerrando — esta variável é obrigatória em produção.')
-    process.exit(1)
-  }
-  logger.warn('JWT_SECRET não definido — usando valor temporário apenas para desenvolvimento.')
-  process.env.JWT_SECRET = 'dev-only-insecure-secret'
+  logger.error('JWT_SECRET não definido. Encerrando — variável obrigatória.')
+  process.exit(1)
 }
 
 const app = express()
@@ -25,6 +22,7 @@ app.set('trust proxy', 1)
 connectDB()
 
 app.use(helmet())
+app.use(mongoSanitize())
 
 // Rate limiting global
 const limiterGeral = rateLimit({
@@ -94,7 +92,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', sistema: 'Cetep PDV API', versao: '1.0.0' })
 })
 
-app.get('/api/backup', require('./middleware/auth.middleware').protect, async (req, res) => {
+app.get('/api/backup', require('./middleware/auth.middleware').protect, require('./middleware/auth.middleware').authorize('admin'), async (req, res) => {
   try {
     const [Produto, Cliente, Venda, Caixa, Categoria] = [
       require('./models/Produto'), require('./models/Cliente'),

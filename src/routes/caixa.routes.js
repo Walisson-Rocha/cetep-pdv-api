@@ -8,7 +8,7 @@ router.get('/atual', caixaAtual)
 router.get('/abertos', authorize('admin', 'gerente'), listarAbertos)
 router.post('/abrir', authorize('admin', 'gerente'), abrirCaixa)
 router.put('/:id/fechar', authorize('admin', 'gerente'), fecharCaixa)
-router.post('/sangria', registrarSangria)
+router.post('/sangria', authorize('admin', 'gerente'), registrarSangria)
 router.get('/historico', listarHistorico)
 
 module.exports = router

@@ -17,21 +17,21 @@ router.get('/', async (req, res) => {
   }
 })
 
-router.put('/', authorize('admin'), async (req, res) => {
+router.put('/', authorize('admin', 'gerente'), async (req, res) => {
   try {
     const {
-      nomeLoja, cnpj, endereco, telefone, whatsapp, chavePix, metaMensal,
+      nomeLoja, razaoSocial, cnpj, ie, email, crt,
+      logradouro, numero, bairro, cidade, uf, cep, complemento, endereco,
+      telefone, whatsapp, chavePix, metaMensal,
       notificacoes, estoqueNegativo, emitirNFCe, emitirNFe,
-      regimeTributario, grupoTributario, cnpjNFe, serieNFCe, serieNFe,
-      ambienteNFe, crt, observacoesFiscais,
       nfce,
     } = req.body
     // Monta o $set sem substituir subdocumentos inteiros (preserva certificado)
     const setFields = {
-      nomeLoja, cnpj, endereco, telefone, whatsapp, chavePix, metaMensal,
+      nomeLoja, razaoSocial, cnpj, ie, email, crt,
+      logradouro, numero, bairro, cidade, uf, cep, complemento, endereco,
+      telefone, whatsapp, chavePix, metaMensal,
       notificacoes, estoqueNegativo, emitirNFCe, emitirNFe,
-      regimeTributario, grupoTributario, cnpjNFe, serieNFCe, serieNFe,
-      ambienteNFe, crt, observacoesFiscais,
     }
     // Usa campos dotted para nfce — não sobrescreve certificadoBase64/Senha
     if (nfce) {

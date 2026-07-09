@@ -14,7 +14,7 @@ router.get('/', async (req, res) => {
     const filtro = {}
 
     if (acao) filtro.acao = acao
-    if (usuario) filtro.nomeUsuario = new RegExp(usuario, 'i')
+    if (usuario) filtro.nomeUsuario = new RegExp(usuario.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').slice(0, 100), 'i')
     if (inicio || fim) {
       filtro.createdAt = {}
       if (inicio) filtro.createdAt.$gte = new Date(inicio)

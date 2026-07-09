@@ -17,7 +17,15 @@ const caixaSchema = new mongoose.Schema({
   }],
   status: { type: String, enum: ['aberto', 'fechado'], default: 'aberto' },
   totalVendas: { type: Number, default: 0 },
-  totalTransacoes: { type: Number, default: 0 }
+  totalTransacoes: { type: Number, default: 0 },
+  totalDinheiro: { type: Number, default: 0 },
+  totalPix: { type: Number, default: 0 },
+  totalDebito: { type: Number, default: 0 },
+  totalCredito: { type: Number, default: 0 },
+  totalFiado: { type: Number, default: 0 },
+  totalMisto: { type: Number, default: 0 },
+  totalBoleto: { type: Number, default: 0 },
+  totalColaborador: { type: Number, default: 0 }
 }, { timestamps: true })
 
 module.exports = mongoose.model('Caixa', caixaSchema)

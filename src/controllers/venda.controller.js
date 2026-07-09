@@ -38,8 +38,18 @@ const registrar = async (req, res) => {
       if (produto.precoAtacado > 0 && produto.quantidadeAtacado > 0 && item.quantidade >= produto.quantidadeAtacado) {
         precoUnitario = produto.precoAtacado
       }
-      // Permite override de preço do frontend (atacado forçado, parcelamento, etc.)
+      // Permite override de preço do frontend (atacado forçado, parcelamento, desconto por item)
       if (item.precoUnitario && item.precoUnitario > 0) {
+        const precoCusto = produto.precoCusto || 0
+        // Bloqueia venda abaixo do custo (apenas se custo cadastrado)
+        if (precoCusto > 0 && item.precoUnitario < precoCusto) {
+          return res.status(400).json({
+            mensagem: `Preço de venda (R$${item.precoUnitario.toFixed(2)}) não pode ser inferior ao custo (R$${precoCusto.toFixed(2)}) para ${produto.nome}`
+          })
+        }
+        if (item.precoUnitario !== produto.precoVenda && item.precoUnitario !== produto.precoAtacado) {
+          logger.info(`Preço override: ${produto.nome} — cadastrado R$${produto.precoVenda} | vendido R$${item.precoUnitario} | operador ${req.user.nome}`)
+        }
         precoUnitario = item.precoUnitario
       }
       const itemSubtotal = (precoUnitario - (item.desconto || 0)) * item.quantidade
@@ -142,8 +152,13 @@ const registrar = async (req, res) => {
         vendaOrigem: venda._id,
       })
     }
+    const campoForma = {
+      dinheiro: 'totalDinheiro', pix: 'totalPix', debito: 'totalDebito',
+      credito: 'totalCredito', fiado: 'totalFiado', misto: 'totalMisto',
+      boleto: 'totalBoleto', colaborador: 'totalColaborador',
+    }[formaPagamento] || 'totalMisto'
     await Caixa.findByIdAndUpdate(caixa._id, {
-      $inc: { totalVendas: total, totalTransacoes: 1 }
+      $inc: { totalVendas: total, totalTransacoes: 1, [campoForma]: total }
     })
     await Log.create({
       usuario: req.user._id, nomeUsuario: req.user.nome,

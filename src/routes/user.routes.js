@@ -49,7 +49,7 @@ router.get('/vendedores', async (req, res) => {
   }
 })
 
-router.get('/', authorize('admin'), async (req, res) => {
+router.get('/', authorize('admin', 'gerente'), async (req, res) => {
   try {
     if (req.query.all === 'true') {
       const usuarios = await User.find().sort({ nome: 1 })
@@ -76,7 +76,7 @@ router.get('/', authorize('admin'), async (req, res) => {
   }
 })
 
-router.post('/', authorize('admin'), validarCriar, validate, async (req, res) => {
+router.post('/', authorize('admin', 'gerente'), validarCriar, validate, async (req, res) => {
   try {
     const { nome, email, senha, perfil } = req.body
     if (!nome || !email || !senha)
@@ -126,7 +126,7 @@ router.post('/', authorize('admin'), validarCriar, validate, async (req, res) =>
   }
 })
 
-router.put('/:id', authorize('admin'), validarAtualizar, validate, async (req, res) => {
+router.put('/:id', authorize('admin', 'gerente'), validarAtualizar, validate, async (req, res) => {
   try {
     const body = req.body
     const perfisValidos = ['admin', 'gerente', 'caixa', 'estoquista', 'colaborador']
@@ -160,7 +160,7 @@ router.put('/:id', authorize('admin'), validarAtualizar, validate, async (req, r
   }
 })
 
-router.put('/:id/permissoes', authorize('admin'), validarId, validate, async (req, res) => {
+router.put('/:id/permissoes', authorize('admin', 'gerente'), validarId, validate, async (req, res) => {
   try {
     const { acessosExtra } = req.body
     if (!Array.isArray(acessosExtra))
@@ -184,7 +184,7 @@ router.put('/:id/permissoes', authorize('admin'), validarId, validate, async (re
   }
 })
 
-router.delete('/:id/permanente', authorize('admin'), validarId, validate, async (req, res) => {
+router.delete('/:id/permanente', authorize('admin', 'gerente'), validarId, validate, async (req, res) => {
   try {
     if (req.params.id === req.user._id.toString())
       return res.status(400).json({ mensagem: 'Você não pode excluir sua própria conta' })
@@ -203,7 +203,7 @@ router.delete('/:id/permanente', authorize('admin'), validarId, validate, async 
   }
 })
 
-router.delete('/:id', authorize('admin'), validarId, validate, async (req, res) => {
+router.delete('/:id', authorize('admin', 'gerente'), validarId, validate, async (req, res) => {
   try {
     if (req.params.id === req.user._id.toString())
       return res.status(400).json({ mensagem: 'Você não pode desativar sua própria conta' })

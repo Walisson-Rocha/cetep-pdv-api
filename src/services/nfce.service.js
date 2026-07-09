@@ -27,8 +27,17 @@ function focusClient(token, ambiente) {
 }
 
 function montarUnidade(unidade) {
-  const map = { kg: 'KG', g: 'G', l: 'L', ml: 'ML', cx: 'CX', pct: 'PCT', un: 'UN' }
+  // 'g' → 'GR' conforme tabela SEFAZ (não 'G'); 'pct' → 'PCT'
+  const map = { kg: 'KG', g: 'GR', l: 'LT', ml: 'ML', cx: 'CX', pct: 'PCT', un: 'UN' }
   return map[unidade] || 'UN'
+}
+
+function montarEAN(codigoBarras) {
+  if (!codigoBarras) return 'SEM GTIN'
+  const digits = String(codigoBarras).replace(/\D/g, '')
+  // EAN válido: 8, 12 ou 13 dígitos
+  if ([8, 12, 13].includes(digits.length)) return digits
+  return 'SEM GTIN'
 }
 
 function montarItems(itens) {
@@ -40,10 +49,12 @@ function montarItems(itens) {
     const cfop  = (p.cfop  || '5102').trim()
     const ncm   = (p.ncm   || '00000000').replace(/\D/g, '').padEnd(8, '0').slice(0, 8)
     const subtotal = Number((item.precoUnitario * item.quantidade).toFixed(2))
+    const ean = montarEAN(p.codigoBarras)
 
     return {
       numero_item:               idx + 1,
       codigo_produto:            String(p.codigoBarras || p._id).slice(-20),
+      codigo_barras:             ean,
       descricao:                 item.nomeProduto,
       codigo_ncm:                ncm,
       cfop,
@@ -87,11 +98,15 @@ async function emitir(venda, config, referencia) {
   const brt = new Date(agora.getTime() - 3 * 60 * 60 * 1000)
   const dataEmissao = brt.toISOString().slice(0, 19) + '-03:00'
 
-  const cnpj = (config.cnpjNFe || config.cnpj || '').replace(/\D/g, '')
+  const cnpj = (config.cnpj || '').replace(/\D/g, '')
   if (!cnpj) throw new Error('CNPJ do emitente não configurado em Configurações → Empresa')
+  const razaoSocial = config.razaoSocial || config.nomeLoja || ''
+  const email = config.email || ''
 
   const payload = {
     cnpj_emitente:      cnpj,
+    ...(razaoSocial ? { nome_emitente: razaoSocial } : {}),
+    ...(email        ? { email_emitente: email }      : {}),
     natureza_operacao:  'Venda ao consumidor',
     forma_pagamento:    0,
     modalidade_frete:   9,
