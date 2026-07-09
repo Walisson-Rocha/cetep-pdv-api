@@ -19,10 +19,36 @@ router.get('/', async (req, res) => {
 
 router.put('/', authorize('admin'), async (req, res) => {
   try {
-    const { nomeLoja, cnpj, endereco, telefone, whatsapp, chavePix, metaMensal, notificacoes, estoqueNegativo, emitirNFCe, emitirNFe } = req.body
+    const {
+      nomeLoja, cnpj, endereco, telefone, whatsapp, chavePix, metaMensal,
+      notificacoes, estoqueNegativo, emitirNFCe, emitirNFe,
+      regimeTributario, grupoTributario, cnpjNFe, serieNFCe, serieNFe,
+      ambienteNFe, crt, observacoesFiscais,
+      nfce,
+    } = req.body
+    // Monta o $set sem substituir subdocumentos inteiros (preserva certificado)
+    const setFields = {
+      nomeLoja, cnpj, endereco, telefone, whatsapp, chavePix, metaMensal,
+      notificacoes, estoqueNegativo, emitirNFCe, emitirNFe,
+      regimeTributario, grupoTributario, cnpjNFe, serieNFCe, serieNFe,
+      ambienteNFe, crt, observacoesFiscais,
+    }
+    // Usa campos dotted para nfce — não sobrescreve certificadoBase64/Senha
+    if (nfce) {
+      const flatten = (obj, prefix) => {
+        for (const [k, v] of Object.entries(obj)) {
+          if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+            flatten(v, `${prefix}.${k}`)
+          } else if (v !== undefined) {
+            setFields[`${prefix}.${k}`] = v
+          }
+        }
+      }
+      flatten(nfce, 'nfce')
+    }
     const config = await Configuracao.findOneAndUpdate(
       {},
-      { $set: { nomeLoja, cnpj, endereco, telefone, whatsapp, chavePix, metaMensal, notificacoes, estoqueNegativo, emitirNFCe, emitirNFe } },
+      { $set: setFields },
       { new: true, upsert: true, runValidators: true }
     )
     res.json({ config, mensagem: 'Configurações salvas com sucesso!' })

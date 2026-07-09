@@ -9,10 +9,10 @@ const { protect, authorize } = require('../middleware/auth.middleware')
 
 router.use(protect)
 
-// GET /retiradas/colaboradores — lista colaboradores ativos (usado no PDV para selecionar)
+// GET /retiradas/colaboradores — lista todos usuários ativos (exceto admin) para compras na loja
 router.get('/colaboradores', async (req, res) => {
   try {
-    const colaboradores = await User.find({ perfil: 'colaborador', ativo: true }, 'nome email')
+    const colaboradores = await User.find({ perfil: { $ne: 'admin' }, ativo: true }, 'nome email perfil')
       .sort({ nome: 1 })
     res.json({ colaboradores })
   } catch (error) {
@@ -73,8 +73,8 @@ router.get('/folha', async (req, res) => {
       new Date().getFullYear().toString() + String(new Date().getMonth() + 1).padStart(2, '0')
     )
 
-    const colaboradores = await User.find({ perfil: 'colaborador', ativo: true }, 'nome email')
-    const retiradas = await Retirada.find({ mes }).populate('colaborador', 'nome email')
+    const colaboradores = await User.find({ perfil: { $ne: 'admin' }, ativo: true }, 'nome email perfil')
+    const retiradas = await Retirada.find({ mes }).populate('colaborador', 'nome email perfil')
 
     const folha = colaboradores.map(col => {
       const minhas = retiradas.filter(r => r.colaborador?._id.toString() === col._id.toString())
@@ -101,8 +101,8 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ mensagem: 'Colaborador e itens são obrigatórios' })
 
     const colaborador = await User.findById(colaboradorId)
-    if (!colaborador || colaborador.perfil !== 'colaborador')
-      return res.status(400).json({ mensagem: 'Colaborador inválido' })
+    if (!colaborador || colaborador.perfil === 'admin' || !colaborador.ativo)
+      return res.status(400).json({ mensagem: 'Usuário inválido para retirada' })
 
     // Valida e desconta estoque
     let total = 0

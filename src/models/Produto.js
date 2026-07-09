@@ -35,6 +35,11 @@ const produtoSchema = new mongoose.Schema({
     rotulo: { type: String, required: true, trim: true },
     valor: { type: Number, required: true, min: 0 },
   }],
+  // Dados fiscais para NFC-e
+  ncm:            { type: String, default: '', trim: true },
+  cfop:           { type: String, default: '5102', trim: true },
+  csosn:          { type: String, default: '400', trim: true },
+  origemProduto:  { type: Number, default: 0 },
 }, {
   timestamps: true,
   toJSON: { virtuals: true },

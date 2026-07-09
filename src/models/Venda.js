@@ -39,7 +39,17 @@ const vendaSchema = new mongoose.Schema({
   cancelada: { type: Boolean, default: false },
   motivoCancelamento: { type: String },
   canceladaPor: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  canceladaEm: { type: Date }
+  canceladaEm: { type: Date },
+  nfce: {
+    referencia:   { type: String },
+    status:       { type: String, enum: ['processando', 'autorizado', 'erro', 'cancelado'] },
+    chaveAcesso:  { type: String },
+    numero:       { type: Number },
+    serie:        { type: String },
+    urlDanfe:     { type: String },
+    erroMensagem: { type: String },
+    emitidaEm:    { type: Date },
+  },
 }, { timestamps: true })
 
 vendaSchema.index({ createdAt: -1 })

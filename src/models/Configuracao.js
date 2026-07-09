@@ -24,7 +24,27 @@ const configuracaoSchema = new mongoose.Schema({
   },
   comissao: {
     ativa: { type: Boolean, default: false },
-  }
+  },
+  nfce: {
+    ambiente:          { type: String, enum: ['homologacao', 'producao'], default: 'homologacao' },
+    uf:                { type: String, default: 'SP' },
+    inscricaoEstadual: { type: String, default: '' },
+    csc:               { type: String, default: '' },
+    idTokenCsc:        { type: String, default: '' },
+    certificadoBase64: { type: String, default: '' },  // .pfx em base64
+    certificadoSenha:  { type: String, default: '' },
+    certificadoInfo:   { type: String, default: '' },  // nome/validade (informativo)
+    focusApiToken:     { type: String, default: '' },
+    serie:             { type: String, default: '001' },
+    endereco: {
+      logradouro:      { type: String, default: '' },
+      numero:          { type: String, default: '' },
+      bairro:          { type: String, default: '' },
+      municipio:       { type: String, default: '' },
+      codigoMunicipio: { type: String, default: '' },
+      cep:             { type: String, default: '' },
+    },
+  },
 }, { timestamps: true })
 
 module.exports = mongoose.model('Configuracao', configuracaoSchema)

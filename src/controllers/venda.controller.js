@@ -38,8 +38,8 @@ const registrar = async (req, res) => {
       if (produto.precoAtacado > 0 && produto.quantidadeAtacado > 0 && item.quantidade >= produto.quantidadeAtacado) {
         precoUnitario = produto.precoAtacado
       }
-      // Permite override manual do frontend (atacado forçado pelo operador)
-      if (item.precoUnitario && item.precoUnitario > 0 && item.precoUnitario <= produto.precoVenda) {
+      // Permite override de preço do frontend (atacado forçado, parcelamento, etc.)
+      if (item.precoUnitario && item.precoUnitario > 0) {
         precoUnitario = item.precoUnitario
       }
       const itemSubtotal = (precoUnitario - (item.desconto || 0)) * item.quantidade

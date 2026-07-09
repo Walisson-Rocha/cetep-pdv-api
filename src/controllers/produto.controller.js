@@ -184,4 +184,18 @@ const historicoPreco = async (req, res) => {
   }
 }
 
-module.exports = { listar, buscarPorCodigo, buscarPorId, criar, atualizar, deletar, alertas, reajustarPrecos, historicoPreco }
+const fixarCsosn = async (req, res) => {
+  try {
+    const result = await Produto.updateMany(
+      { csosn: '400' },
+      { $set: { csosn: '102' } }
+    )
+    logger.info(`Fix CSOSN: ${result.modifiedCount} produtos atualizados de 400 → 102`)
+    res.json({ mensagem: `${result.modifiedCount} produto(s) atualizados de CSOSN 400 → 102` })
+  } catch (error) {
+    logger.error('Erro ao fixar CSOSN:', error)
+    res.status(500).json({ mensagem: 'Erro ao atualizar CSOSN dos produtos' })
+  }
+}
+
+module.exports = { listar, buscarPorCodigo, buscarPorId, criar, atualizar, deletar, alertas, reajustarPrecos, historicoPreco, fixarCsosn }
