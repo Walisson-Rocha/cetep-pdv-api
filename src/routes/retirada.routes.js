@@ -2,6 +2,7 @@ const logger = require('../config/logger')
 const express = require('express')
 const router = express.Router()
 const Retirada = require('../models/Retirada')
+const QuitacaoFolha = require('../models/QuitacaoFolha')
 const Produto = require('../models/Produto')
 const User = require('../models/User')
 const Log = require('../models/Log')
@@ -74,15 +75,26 @@ router.get('/folha', async (req, res) => {
     )
 
     const colaboradores = await User.find({ perfil: { $ne: 'admin' }, ativo: true }, 'nome email perfil')
-    const retiradas = await Retirada.find({ mes }).populate('colaborador', 'nome email perfil')
+    const [retiradas, quitacoes] = await Promise.all([
+      Retirada.find({ mes }).populate('colaborador', 'nome email perfil'),
+      QuitacaoFolha.find({ mes }).populate('registradaPor', 'nome'),
+    ])
 
     const folha = colaboradores.map(col => {
       const minhas = retiradas.filter(r => r.colaborador?._id.toString() === col._id.toString())
+      const quitacao = quitacoes.find(q => q.colaborador.toString() === col._id.toString()) || null
       return {
         colaborador: { id: col._id, nome: col.nome, email: col.email },
         totalRetiradas: minhas.reduce((acc, r) => acc + r.total, 0),
         qtdRetiradas: minhas.length,
         itens: minhas.flatMap(r => r.itens),
+        quitacao: quitacao ? {
+          id: quitacao._id,
+          total: quitacao.total,
+          observacao: quitacao.observacao,
+          registradaPor: quitacao.registradaPor?.nome,
+          data: quitacao.createdAt,
+        } : null,
       }
     })
 
@@ -149,6 +161,53 @@ router.post('/', async (req, res) => {
   } catch (error) {
     logger.error('Erro ao criar retirada:', error)
     res.status(500).json({ mensagem: 'Erro ao registrar retirada' })
+  }
+})
+
+// POST /retiradas/quitar — fecha conta de um colaborador no mês (sem caixa)
+router.post('/quitar', async (req, res) => {
+  try {
+    const { colaboradorId, mes, observacao } = req.body
+    if (!colaboradorId || !mes) return res.status(400).json({ mensagem: 'colaboradorId e mes são obrigatórios' })
+
+    const colaborador = await User.findById(colaboradorId)
+    if (!colaborador) return res.status(404).json({ mensagem: 'Colaborador não encontrado' })
+
+    const mesInt = parseInt(mes)
+    const retiradas = await Retirada.find({ colaborador: colaboradorId, mes: mesInt })
+    const total = retiradas.reduce((acc, r) => acc + r.total, 0)
+
+    const quitacao = await QuitacaoFolha.findOneAndUpdate(
+      { colaborador: colaboradorId, mes: mesInt },
+      { total, observacao: observacao || '', registradaPor: req.user._id },
+      { upsert: true, new: true }
+    )
+
+    await Log.create({
+      usuario: req.user._id,
+      nomeUsuario: req.user.nome,
+      acao: 'folha_quitada',
+      detalhes: `Folha de ${colaborador.nome} quitada — ${mesInt} — R$${total.toFixed(2)}`,
+      referencia: quitacao._id,
+    })
+
+    res.json({ quitacao, mensagem: `Conta de ${colaborador.nome} quitada com sucesso` })
+  } catch (error) {
+    logger.error('Erro ao quitar folha:', error)
+    res.status(500).json({ mensagem: 'Erro ao quitar conta' })
+  }
+})
+
+// DELETE /retiradas/quitar/:colaboradorId — desfaz quitação de um mês
+router.delete('/quitar/:colaboradorId', async (req, res) => {
+  try {
+    const { mes } = req.query
+    if (!mes) return res.status(400).json({ mensagem: 'mes é obrigatório' })
+    await QuitacaoFolha.findOneAndDelete({ colaborador: req.params.colaboradorId, mes: parseInt(mes) })
+    res.json({ mensagem: 'Quitação desfeita' })
+  } catch (error) {
+    logger.error('Erro ao desfazer quitação:', error)
+    res.status(500).json({ mensagem: 'Erro ao desfazer quitação' })
   }
 })
 
