@@ -71,6 +71,18 @@ router.post('/emitir/:vendaId', authorize('admin', 'gerente', 'caixa'), async (r
     const config = await Configuracao.findOne()
     if (!config) return res.status(500).json({ mensagem: 'Configurações não encontradas' })
 
+    // Valida NCM de todos os itens antes de enviar à SEFAZ
+    const semNcm = venda.itens.filter(item => {
+      const ncmRaw = (item.produto?.ncm || '').replace(/\D/g, '')
+      return !ncmRaw || ncmRaw === '00000000' || ncmRaw.length !== 8
+    })
+    if (semNcm.length > 0) {
+      const nomes = semNcm.map(i => `"${i.nomeProduto}"`).join(', ')
+      return res.status(400).json({
+        mensagem: `Produto(s) sem NCM válido: ${nomes}. Cadastre o NCM de 8 dígitos em Estoque → Editar produto antes de emitir NFC-e.`
+      })
+    }
+
     // Usa o _id da venda como referência única para o Focus NFe
     const referencia = `pdv-${venda._id.toString()}`
 

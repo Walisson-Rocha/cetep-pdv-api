@@ -47,7 +47,11 @@ function montarItems(itens) {
     const csosnRaw = (p.csosn || '102').trim()
     const csosn = csosnRaw === '400' ? '102' : csosnRaw
     const cfop  = (p.cfop  || '5102').trim()
-    const ncm   = (p.ncm   || '00000000').replace(/\D/g, '').padEnd(8, '0').slice(0, 8)
+    const ncmDigits = (p.ncm || '').replace(/\D/g, '')
+    if (!ncmDigits || ncmDigits.length !== 8) {
+      throw new Error(`Produto "${item.nomeProduto}" sem NCM válido (8 dígitos). Cadastre o NCM em Estoque antes de emitir NFC-e.`)
+    }
+    const ncm = ncmDigits
     const subtotal = Number((item.precoUnitario * item.quantidade).toFixed(2))
     const ean = montarEAN(p.codigoBarras)
 
