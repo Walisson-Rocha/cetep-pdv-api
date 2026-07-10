@@ -31,6 +31,7 @@ const vendaSchema = new mongoose.Schema({
     valor: { type: Number }
   }],
   troco: { type: Number, default: 0 },
+  cpfConsumidor: { type: String, default: '' },
   cliente: { type: mongoose.Schema.Types.ObjectId, ref: 'Cliente', default: null },
   colaborador: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   caixa: { type: mongoose.Schema.Types.ObjectId, ref: 'Caixa', required: true },

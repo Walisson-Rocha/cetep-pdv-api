@@ -41,7 +41,7 @@ function validarEndereco(body) {
 // Listagem simplificada de usuários ativos — acessível a qualquer perfil autenticado
 router.get('/vendedores', async (req, res) => {
   try {
-    const usuarios = await User.find({ ativo: true }, 'nome perfil').sort({ nome: 1 })
+    const usuarios = await User.find({ ativo: true, perfil: { $in: ['admin', 'gerente'] } }, 'nome perfil').sort({ nome: 1 })
     res.json({ usuarios })
   } catch (error) {
     logger.error('Erro ao buscar vendedores:', error)

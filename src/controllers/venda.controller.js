@@ -12,7 +12,7 @@ const Configuracao = require('../models/Configuracao')
 
 const registrar = async (req, res) => {
   try {
-    const { itens, formaPagamento, formasPagamento = [], clienteId, colaboradorId, vendedorId, desconto = 0, troco = 0, pontosResgatados = 0, observacao = '' } = req.body
+    const { itens, formaPagamento, formasPagamento = [], clienteId, colaboradorId, vendedorId, desconto = 0, troco = 0, pontosResgatados = 0, observacao = '', cpfConsumidor = '' } = req.body
     const caixa = await Caixa.findOne({ status: 'aberto' })
     if (!caixa) return res.status(400).json({ mensagem: 'Não há caixa aberto. Solicite ao gerente que abra o caixa.' })
     const config = await Configuracao.findOne().lean()
@@ -80,6 +80,7 @@ const registrar = async (req, res) => {
       itens: itensCompletos, subtotal, desconto, total,
       formaPagamento, formasPagamento, troco,
       observacao: observacao.trim(),
+      cpfConsumidor: cpfConsumidor.replace(/\D/g, '').slice(0, 11) || '',
       cliente: clienteId || null,
       colaborador: colaboradorId || null,
       caixa: caixa._id,

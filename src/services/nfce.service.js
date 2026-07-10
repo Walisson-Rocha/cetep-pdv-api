@@ -120,9 +120,11 @@ async function emitir(venda, config, referencia) {
     formas_pagamento:   montarFormasPagamento(venda),
   }
 
-  // CPF do cliente, se informado
-  if (venda.cliente?.cpf) {
-    payload.cpf_destinatario = venda.cliente.cpf.replace(/\D/g, '')
+  // CPF do consumidor (campo avulso ou do cliente cadastrado)
+  const cpfRaw = venda.cpfConsumidor || venda.cliente?.cpf || ''
+  if (cpfRaw) {
+    const cpfDigits = cpfRaw.replace(/\D/g, '')
+    if (cpfDigits.length === 11) payload.cpf_destinatario = cpfDigits
   }
 
   logger.info(`NFC-e emissão ref=${referencia} ambiente=${ambiente}`)

@@ -71,13 +71,16 @@ router.post('/emitir/:vendaId', authorize('admin', 'gerente', 'caixa'), async (r
     const config = await Configuracao.findOne()
     if (!config) return res.status(500).json({ mensagem: 'Configurações não encontradas' })
 
-    // Marca como processando
-    venda.nfce = { status: 'processando', emitidaEm: new Date() }
+    // Usa o _id da venda como referência única para o Focus NFe
+    const referencia = `pdv-${venda._id.toString()}`
+
+    // Marca como processando e armazena referência
+    venda.nfce = { status: 'processando', emitidaEm: new Date(), referencia }
     await venda.save()
 
     let resultado
     try {
-      resultado = await nfceService.emitir(venda, config)
+      resultado = await nfceService.emitir(venda, config, referencia)
     } catch (err) {
       venda.nfce.status = 'erro'
       venda.nfce.erroMensagem = err.message
@@ -119,6 +122,59 @@ router.get('/status/:vendaId', authorize('admin', 'gerente', 'caixa'), async (re
     res.json({ nfce: venda.nfce })
   } catch (error) {
     res.status(500).json({ mensagem: 'Erro ao buscar status' })
+  }
+})
+
+// ── Cancelar NFC-e ──────────────────────────────────────────────────────────
+router.delete('/cancelar/:vendaId', authorize('admin', 'gerente'), async (req, res) => {
+  try {
+    const venda = await Venda.findById(req.params.vendaId)
+    if (!venda) return res.status(404).json({ mensagem: 'Venda não encontrada' })
+    if (!venda.nfce?.referencia) return res.status(400).json({ mensagem: 'NFC-e sem referência registrada — não pode ser cancelada por aqui' })
+    if (venda.nfce.status !== 'autorizado') return res.status(400).json({ mensagem: 'Somente NFC-e autorizada pode ser cancelada' })
+
+    const config = await Configuracao.findOne()
+    const justificativa = req.body.justificativa || 'Cancelamento solicitado pelo operador'
+    if (justificativa.length < 15) return res.status(400).json({ mensagem: 'Justificativa deve ter pelo menos 15 caracteres' })
+
+    try {
+      await nfceService.cancelar(venda.nfce.referencia, justificativa, config)
+    } catch (err) {
+      return res.status(422).json({ mensagem: `Erro ao cancelar na SEFAZ: ${err.message}` })
+    }
+
+    venda.nfce.status = 'cancelado'
+    await venda.save()
+    res.json({ mensagem: 'NFC-e cancelada com sucesso' })
+  } catch (error) {
+    logger.error('Erro ao cancelar NFC-e:', error)
+    res.status(500).json({ mensagem: 'Erro ao cancelar NFC-e' })
+  }
+})
+
+// ── Listar NFC-e emitidas ────────────────────────────────────────────────────
+router.get('/lista', authorize('admin', 'gerente'), async (req, res) => {
+  try {
+    const { page = 1, limit = 20, status } = req.query
+    const filtro = { 'nfce.status': { $exists: true } }
+    if (status) filtro['nfce.status'] = status
+    const [vendas, total] = await Promise.all([
+      Venda.find(filtro)
+        .select('numero total createdAt nfce formaPagamento vendedor cpfConsumidor')
+        .populate('vendedor', 'nome')
+        .sort({ createdAt: -1 })
+        .skip((Number(page) - 1) * Number(limit))
+        .limit(Number(limit)),
+      Venda.countDocuments(filtro),
+    ])
+    const counts = await Venda.aggregate([
+      { $match: { 'nfce.status': { $exists: true } } },
+      { $group: { _id: '$nfce.status', total: { $sum: 1 } } },
+    ])
+    res.json({ vendas, total, paginas: Math.ceil(total / Number(limit)), counts })
+  } catch (error) {
+    logger.error('Erro ao listar NFC-e:', error)
+    res.status(500).json({ mensagem: 'Erro ao listar NFC-e' })
   }
 })
 
