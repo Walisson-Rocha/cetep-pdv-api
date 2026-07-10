@@ -9,6 +9,7 @@ const Cliente = require('../models/Cliente')
 const Retirada = require('../models/Retirada')
 const Log = require('../models/Log')
 const Configuracao = require('../models/Configuracao')
+const nfceService = require('../services/nfce')
 
 const registrar = async (req, res) => {
   try {
@@ -217,6 +218,26 @@ const cancelar = async (req, res) => {
     venda.motivoCancelamento = motivo
     venda.canceladaPor = req.user._id
     venda.canceladaEm = new Date()
+
+    // Cancela NFC-e na SEFAZ automaticamente se estiver autorizada
+    let nfceCancelada = false
+    let nfceErro = null
+    if (venda.nfce?.status === 'autorizado' && venda.nfce?.referencia) {
+      try {
+        const config = await Configuracao.findOne()
+        const justificativa = motivo.length >= 15
+          ? motivo
+          : `Cancelamento venda #${venda.numero} - ${motivo}`.slice(0, 255)
+        await nfceService.cancelar(venda.nfce.referencia, justificativa, config)
+        venda.nfce.status = 'cancelado'
+        nfceCancelada = true
+        logger.info(`NFC-e ref=${venda.nfce.referencia} cancelada junto com venda #${venda.numero}`)
+      } catch (err) {
+        nfceErro = err.message
+        logger.error(`Falha ao cancelar NFC-e ref=${venda.nfce.referencia}: ${err.message}`)
+      }
+    }
+
     await venda.save()
 
     // Estorna o valor do caixa
@@ -238,7 +259,15 @@ const cancelar = async (req, res) => {
       referencia: venda._id
     })
     socket.emit('venda:cancelada', { numero: venda.numero, total: venda.total })
-    res.json({ mensagem: 'Venda cancelada e estoque estornado', venda })
+    res.json({
+      mensagem: 'Venda cancelada e estoque estornado',
+      venda,
+      nfce: nfceCancelada
+        ? { cancelada: true, mensagem: 'NFC-e cancelada na SEFAZ com sucesso' }
+        : nfceErro
+        ? { cancelada: false, mensagem: `NFC-e NÃO cancelada na SEFAZ: ${nfceErro}` }
+        : { cancelada: false, mensagem: 'Sem NFC-e autorizada para cancelar' },
+    })
   } catch (error) {
     logger.error('Erro ao cancelar venda:', error)
     res.status(500).json({ mensagem: 'Erro ao cancelar venda' })
