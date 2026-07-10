@@ -6,7 +6,7 @@ const HistoricoPreco = require('../models/HistoricoPreco')
 
 const listar = async (req, res) => {
   try {
-    const { busca, categoria, status, page = 1, limit = 50 } = req.query
+    const { busca, categoria, status, page = 1, limit = 50, sort = 'nome' } = req.query
     const filtro = { ativo: true }
     if (busca) {
       const safe = String(busca).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').slice(0, 100)
@@ -17,10 +17,11 @@ const listar = async (req, res) => {
       ]
     }
     if (categoria) filtro.categoria = categoria
+    const sortObj = sort === 'novo' ? { createdAt: -1 } : { nome: 1 }
     const produtos = await Produto.find(filtro)
       .populate('categoria', 'nome cor icone')
       .populate('fornecedor', 'nome')
-      .sort({ nome: 1 })
+      .sort(sortObj)
       .limit(limit * 1)
       .skip((page - 1) * limit)
     const total = await Produto.countDocuments(filtro)

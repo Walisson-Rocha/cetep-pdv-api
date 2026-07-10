@@ -218,6 +218,19 @@ const cancelar = async (req, res) => {
     venda.canceladaPor = req.user._id
     venda.canceladaEm = new Date()
     await venda.save()
+
+    // Estorna o valor do caixa
+    if (venda.caixa) {
+      const campoForma = {
+        dinheiro: 'totalDinheiro', pix: 'totalPix', debito: 'totalDebito',
+        credito: 'totalCredito', fiado: 'totalFiado', misto: 'totalMisto',
+        boleto: 'totalBoleto', colaborador: 'totalColaborador',
+      }[venda.formaPagamento] || 'totalMisto'
+      await Caixa.findByIdAndUpdate(venda.caixa, {
+        $inc: { totalVendas: -venda.total, totalTransacoes: -1, [campoForma]: -venda.total }
+      })
+    }
+
     await Log.create({
       usuario: req.user._id, nomeUsuario: req.user.nome,
       acao: 'venda_cancelada',
