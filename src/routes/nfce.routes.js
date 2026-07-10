@@ -167,9 +167,14 @@ router.delete('/cancelar/:vendaId', authorize('admin', 'gerente'), async (req, r
 // ── Listar NFC-e emitidas ────────────────────────────────────────────────────
 router.get('/lista', authorize('admin', 'gerente'), async (req, res) => {
   try {
-    const { page = 1, limit = 20, status } = req.query
+    const { page = 1, limit = 20, status, inicio, fim } = req.query
     const filtro = { 'nfce.status': { $exists: true } }
     if (status) filtro['nfce.status'] = status
+    if (inicio || fim) {
+      filtro.createdAt = {}
+      if (inicio) filtro.createdAt.$gte = new Date(inicio)
+      if (fim) filtro.createdAt.$lte = new Date(fim)
+    }
     const [vendas, total] = await Promise.all([
       Venda.find(filtro)
         .select('numero total createdAt nfce formaPagamento vendedor cpfConsumidor')
@@ -180,10 +185,15 @@ router.get('/lista', authorize('admin', 'gerente'), async (req, res) => {
       Venda.countDocuments(filtro),
     ])
     const counts = await Venda.aggregate([
-      { $match: { 'nfce.status': { $exists: true } } },
+      { $match: filtro },
       { $group: { _id: '$nfce.status', total: { $sum: 1 } } },
     ])
-    res.json({ vendas, total, paginas: Math.ceil(total / Number(limit)), counts })
+    const totaisAgg = await Venda.aggregate([
+      { $match: { ...filtro, 'nfce.status': 'autorizado' } },
+      { $group: { _id: null, totalValor: { $sum: '$total' } } },
+    ])
+    const totalValorAutorizado = totaisAgg[0]?.totalValor || 0
+    res.json({ vendas, total, paginas: Math.ceil(total / Number(limit)), counts, totalValorAutorizado })
   } catch (error) {
     logger.error('Erro ao listar NFC-e:', error)
     res.status(500).json({ mensagem: 'Erro ao listar NFC-e' })
