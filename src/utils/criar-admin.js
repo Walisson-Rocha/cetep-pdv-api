@@ -9,7 +9,7 @@ const User = require('../models/User')
 
 const NOME  = 'Administrador'
 const EMAIL = 'admin@pdv.com'
-const SENHA = 'admin1234'
+const SENHA = 'admin123456'
 
 async function main() {
   await mongoose.connect(process.env.MONGO_URI)
