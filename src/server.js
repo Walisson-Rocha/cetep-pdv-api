@@ -95,6 +95,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', sistema: 'PDV Soares API', versao: '1.0.0' })
 })
 
+
 app.get('/api/backup', require('./middleware/auth.middleware').protect, require('./middleware/auth.middleware').authorize('admin'), async (req, res) => {
   try {
     const [Produto, Cliente, Venda, Caixa, Categoria] = [
