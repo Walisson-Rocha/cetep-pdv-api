@@ -184,18 +184,18 @@ router.put('/:id/permissoes', authorize('admin', 'gerente'), validarId, validate
   }
 })
 
-router.delete('/:id/permanente', authorize('admin', 'gerente'), validarId, validate, async (req, res) => {
+router.delete('/:id/permanente', authorize('admin'), validarId, validate, async (req, res) => {
   try {
     if (req.params.id === req.user._id.toString())
       return res.status(400).json({ mensagem: 'Você não pode excluir sua própria conta' })
     const user = await User.findByIdAndDelete(req.params.id)
     if (!user) return res.status(404).json({ mensagem: 'Usuário não encontrado' })
-    await Log.create({
+    Log.create({
       usuario: req.user._id, nomeUsuario: req.user.nome,
       acao: 'usuario_excluido_permanente',
       detalhes: `Usuário excluído permanentemente: ${user.nome} (${user.perfil})`,
       referencia: user._id,
-    })
+    }).catch(e => logger.warn('Log de exclusão falhou:', e.message))
     res.json({ mensagem: 'Usuário excluído permanentemente' })
   } catch (error) {
     logger.error('Erro ao excluir usuário:', error)
