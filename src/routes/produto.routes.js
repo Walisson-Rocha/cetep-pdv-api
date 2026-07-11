@@ -11,7 +11,7 @@ const validarProdutoCriar = [
   body('fornecedor').optional({ nullable: true }).isMongoId().withMessage('Fornecedor inválido'),
   body('precoVenda').isFloat({ min: 0 }).withMessage('Preço de venda deve ser um número maior ou igual a 0'),
   body('precoAtacado').optional().isFloat({ min: 0 }).withMessage('Preço de atacado inválido'),
-  body('precoCusto').optional().isFloat({ min: 0 }).withMessage('Preço de custo inválido'),
+  body('precoCusto').isFloat({ min: 0.01 }).withMessage('Preço de custo é obrigatório e deve ser maior que 0'),
   body('estoque').optional().isFloat({ min: 0 }).withMessage('Estoque inválido'),
   body('unidade').optional().isIn(['un', 'kg', 'g', 'l', 'ml', 'cx', 'pct']).withMessage('Unidade inválida'),
 ]

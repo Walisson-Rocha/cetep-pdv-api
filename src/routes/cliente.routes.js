@@ -142,7 +142,7 @@ router.get('/:id/pontos', async (req, res) => {
   }
 })
 
-router.put('/:id/quitar', authorize('admin', 'gerente'), async (req, res) => {
+router.put('/:id/quitar', authorize('admin', 'gerente', 'caixa'), async (req, res) => {
   try {
     const { valor } = req.body
     if (!valor || isNaN(valor) || valor <= 0) {

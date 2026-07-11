@@ -103,7 +103,7 @@ describe('POST /api/produtos', () => {
     Produto.create.mockResolvedValue(produto)
     Log.create.mockResolvedValue({})
     const res = await request(app).post('/api/produtos').send({
-      nome: 'Caneta', precoVenda: 5, categoria: '507f1f77bcf86cd799439021', fornecedor: '507f1f77bcf86cd799439022',
+      nome: 'Caneta', precoVenda: 5, precoCusto: 2, categoria: '507f1f77bcf86cd799439021', fornecedor: '507f1f77bcf86cd799439022',
     })
     expect(res.status).toBe(201)
     expect(mockPopulate).toHaveBeenCalled()
@@ -114,7 +114,7 @@ describe('POST /api/produtos', () => {
     const err = new Error(); err.code = 11000
     Produto.create.mockRejectedValue(err)
     const res = await request(app).post('/api/produtos').send({
-      nome: 'Caneta', precoVenda: 5, categoria: '507f1f77bcf86cd799439021', fornecedor: '507f1f77bcf86cd799439022', codigoBarras: '1234',
+      nome: 'Caneta', precoVenda: 5, precoCusto: 2, categoria: '507f1f77bcf86cd799439021', fornecedor: '507f1f77bcf86cd799439022', codigoBarras: '1234',
     })
     expect(res.status).toBe(400)
     expect(res.body.mensagem).toMatch(/código de barras/i)

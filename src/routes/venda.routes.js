@@ -1,7 +1,7 @@
 const express = require('express')
 const router = express.Router()
 const { body, param } = require('express-validator')
-const { registrar, cancelar, listar, vendasHoje, vendasCliente } = require('../controllers/venda.controller')
+const { registrar, cancelar, listar, vendasHoje, vendasCliente, listarNaoFiscal } = require('../controllers/venda.controller')
 const { protect, authorize } = require('../middleware/auth.middleware')
 const validate = require('../middleware/validate.middleware')
 
@@ -21,6 +21,7 @@ const validarRegistrar = [
 router.use(protect)
 router.get('/', listar)
 router.get('/hoje', vendasHoje)
+router.get('/nao-fiscal', authorize('admin', 'gerente'), listarNaoFiscal)
 router.post('/', validarRegistrar, validate, registrar)
 router.put('/:id/cancelar', authorize('admin', 'gerente'), param('id').isMongoId().withMessage('ID inválido'), validate, cancelar)
 router.get('/cliente/:id', param('id').isMongoId().withMessage('ID inválido'), validate, vendasCliente)

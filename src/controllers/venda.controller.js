@@ -325,6 +325,42 @@ const vendasHoje = async (req, res) => {
   }
 }
 
+const listarNaoFiscal = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, status, inicio, fim } = req.query
+    const filtro = { 'nfce.status': { $exists: false } }
+    if (status === 'cancelada') filtro.cancelada = true
+    if (status === 'concluida') filtro.cancelada = false
+    if (inicio || fim) {
+      filtro.createdAt = {}
+      if (inicio) filtro.createdAt.$gte = new Date(inicio)
+      if (fim) filtro.createdAt.$lte = new Date(fim)
+    }
+    const [vendas, total] = await Promise.all([
+      Venda.find(filtro)
+        .select('numero total createdAt cancelada formaPagamento vendedor cpfConsumidor')
+        .populate('vendedor', 'nome')
+        .sort({ createdAt: -1 })
+        .skip((Number(page) - 1) * Number(limit))
+        .limit(Number(limit)),
+      Venda.countDocuments(filtro),
+    ])
+    const counts = await Venda.aggregate([
+      { $match: filtro },
+      { $group: { _id: { $cond: ['$cancelada', 'cancelada', 'concluida'] }, total: { $sum: 1 } } },
+    ])
+    const totaisAgg = await Venda.aggregate([
+      { $match: { ...filtro, cancelada: false } },
+      { $group: { _id: null, totalValor: { $sum: '$total' } } },
+    ])
+    const totalValor = totaisAgg[0]?.totalValor || 0
+    res.json({ vendas, total, paginas: Math.ceil(total / Number(limit)) || 1, counts, totalValor })
+  } catch (error) {
+    logger.error('Erro ao listar cupons não fiscais:', error)
+    res.status(500).json({ mensagem: 'Erro ao listar cupons não fiscais' })
+  }
+}
+
 const vendasCliente = async (req, res) => {
   try {
     const mongoose = require('mongoose')
@@ -352,4 +388,4 @@ const vendasCliente = async (req, res) => {
   }
 }
 
-module.exports = { registrar, cancelar, listar, vendasHoje, vendasCliente }
+module.exports = { registrar, cancelar, listar, vendasHoje, vendasCliente, listarNaoFiscal }
