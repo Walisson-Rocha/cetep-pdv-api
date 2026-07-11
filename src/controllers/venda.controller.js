@@ -338,8 +338,9 @@ const listarNaoFiscal = async (req, res) => {
     }
     const [vendas, total] = await Promise.all([
       Venda.find(filtro)
-        .select('numero total createdAt cancelada formaPagamento vendedor cpfConsumidor')
+        .select('numero total subtotal desconto createdAt cancelada formaPagamento vendedor cliente cpfConsumidor itens')
         .populate('vendedor', 'nome')
+        .populate('cliente', 'nome')
         .sort({ createdAt: -1 })
         .skip((Number(page) - 1) * Number(limit))
         .limit(Number(limit)),
