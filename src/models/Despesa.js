@@ -14,4 +14,7 @@ const despesaSchema = new mongoose.Schema({
   registradaPor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
 }, { timestamps: true })
 
+despesaSchema.index({ createdAt: -1 })
+despesaSchema.index({ paga: 1, createdAt: -1 })
+
 module.exports = mongoose.model('Despesa', despesaSchema)

@@ -55,6 +55,9 @@ const vendaSchema = new mongoose.Schema({
 
 vendaSchema.index({ createdAt: -1 })
 vendaSchema.index({ cancelada: 1, createdAt: -1 })
+vendaSchema.index({ caixa: 1, createdAt: -1 })
+vendaSchema.index({ vendedor: 1, createdAt: -1 })
+vendaSchema.index({ colaborador: 1, createdAt: -1 })
 
 // Número de venda gerado atomicamente — sem race condition
 vendaSchema.pre('save', async function (next) {

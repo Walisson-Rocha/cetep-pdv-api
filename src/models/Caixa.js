@@ -28,4 +28,7 @@ const caixaSchema = new mongoose.Schema({
   totalColaborador: { type: Number, default: 0 }
 }, { timestamps: true })
 
+caixaSchema.index({ status: 1 })
+caixaSchema.index({ createdAt: -1 })
+
 module.exports = mongoose.model('Caixa', caixaSchema)

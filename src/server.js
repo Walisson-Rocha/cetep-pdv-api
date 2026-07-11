@@ -1,6 +1,7 @@
 require('dotenv').config()
 const http = require('http')
 const express = require('express')
+const compression = require('compression')
 const cors = require('cors')
 const morgan = require('morgan')
 const helmet = require('helmet')
@@ -21,6 +22,7 @@ app.set('trust proxy', 1)
 
 connectDB()
 
+app.use(compression())
 app.use(helmet())
 app.use(mongoSanitize())
 

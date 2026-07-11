@@ -22,4 +22,7 @@ const logSchema = new mongoose.Schema({
   ip: { type: String }
 }, { timestamps: true })
 
+logSchema.index({ createdAt: -1 })
+logSchema.index({ usuario: 1, createdAt: -1 })
+
 module.exports = mongoose.model('Log', logSchema)

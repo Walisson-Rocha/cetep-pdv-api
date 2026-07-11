@@ -54,13 +54,13 @@ const resumo = async (req, res) => {
 
     const [vendasHoje, vendasOntem, vendasMes, vendas7dias, caixasAbertas, clientesComFiado, despesasHoje, config, produtosAgg, rankingAgg] =
       await Promise.all([
-        Venda.find({ createdAt: { $gte: inicioHoje,  $lte: fimHoje  }, cancelada: false }),
-        Venda.find({ createdAt: { $gte: inicioOntem, $lte: fimOntem }, cancelada: false }),
-        Venda.find({ createdAt: { $gte: inicioMes,   $lte: fimMes   }, cancelada: false }),
-        Venda.find({ createdAt: { $gte: brt7diasAtras }, cancelada: false }),
-        Caixa.find({ status: 'aberto' }).populate('abertoPor', 'nome'),
-        Cliente.find({ saldoFiado: { $gt: 0 } }),
-        Despesa.find({ createdAt: { $gte: inicioHoje, $lte: fimHoje } }),
+        Venda.find({ createdAt: { $gte: inicioHoje,  $lte: fimHoje  }, cancelada: false }).select('total formaPagamento createdAt'),
+        Venda.find({ createdAt: { $gte: inicioOntem, $lte: fimOntem }, cancelada: false }).select('total'),
+        Venda.find({ createdAt: { $gte: inicioMes,   $lte: fimMes   }, cancelada: false }).select('total'),
+        Venda.find({ createdAt: { $gte: brt7diasAtras }, cancelada: false }).select('total createdAt'),
+        Caixa.find({ status: 'aberto' }).populate('abertoPor', 'nome').select('abertoPor abertoEm totalVendas saldoInicial'),
+        Cliente.find({ saldoFiado: { $gt: 0 } }).select('saldoFiado'),
+        Despesa.find({ createdAt: { $gte: inicioHoje, $lte: fimHoje } }).select('valor'),
         Configuracao.findOne(),
         // Aggregation: conta zerados/baixos/vencendo sem carregar todos os docs
         Produto.aggregate([

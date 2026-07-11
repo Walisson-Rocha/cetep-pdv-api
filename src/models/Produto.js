@@ -60,5 +60,8 @@ produtoSchema.virtual('statusEstoque').get(function () {
 })
 
 produtoSchema.index({ nome: 'text', codigoBarras: 1 })
+produtoSchema.index({ ativo: 1, nome: 1 })
+produtoSchema.index({ ativo: 1, categoria: 1, nome: 1 })
+produtoSchema.index({ codigosBarras: 1 })
 
 module.exports = mongoose.model('Produto', produtoSchema)

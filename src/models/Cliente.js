@@ -28,4 +28,8 @@ clienteSchema.virtual('statusFiado').get(function () {
   return 'ativo'
 })
 
+clienteSchema.index({ nome: 1 })
+clienteSchema.index({ saldoFiado: 1 })
+clienteSchema.index({ ativo: 1, nome: 1 })
+
 module.exports = mongoose.model('Cliente', clienteSchema)
