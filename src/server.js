@@ -22,6 +22,8 @@ app.set('trust proxy', 1)
 
 connectDB()
 
+
+
 app.use(compression())
 app.use(helmet())
 app.use(mongoSanitize())
