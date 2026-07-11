@@ -13,7 +13,9 @@ const logSchema = new mongoose.Schema({
       'caixa_aberto', 'caixa_fechado', 'sangria',
       'cliente_criado', 'cliente_editado',
       'despesa_criada', 'usuario_criado', 'usuario_editado', 'usuario_desativado',
-      'retirada_criada'
+      'usuario_excluido_permanente', 'permissoes_atualizadas',
+      'retirada_criada', 'folha_quitada', 'fiado_quitado', 'comissao_paga',
+      'conta_pagar_criada', 'conta_pagar_paga'
     ],
     required: true
   },
