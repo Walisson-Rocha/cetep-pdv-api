@@ -10,18 +10,6 @@ const { protect, authorize } = require('../middleware/auth.middleware')
 
 router.use(protect)
 
-// GET /retiradas/colaboradores — lista todos usuários ativos (exceto admin) para compras na loja
-router.get('/colaboradores', async (req, res) => {
-  try {
-    const colaboradores = await User.find({ perfil: { $ne: 'admin' }, ativo: true }, 'nome email perfil')
-      .sort({ nome: 1 })
-    res.json({ colaboradores })
-  } catch (error) {
-    logger.error('Erro ao buscar colaboradores:', error)
-    res.status(500).json({ mensagem: 'Erro ao buscar colaboradores' })
-  }
-})
-
 // GET /retiradas/minhas — apenas protect, sem authorize (colaborador vê as próprias)
 router.get('/minhas', async (req, res) => {
   try {
@@ -38,6 +26,18 @@ router.get('/minhas', async (req, res) => {
 })
 
 router.use(authorize('admin', 'gerente'))
+
+// GET /retiradas/colaboradores — lista usuários ativos para retiradas (admin/gerente apenas)
+router.get('/colaboradores', async (req, res) => {
+  try {
+    const colaboradores = await User.find({ perfil: { $ne: 'admin' }, ativo: true }, 'nome email perfil')
+      .sort({ nome: 1 })
+    res.json({ colaboradores })
+  } catch (error) {
+    logger.error('Erro ao buscar colaboradores:', error)
+    res.status(500).json({ mensagem: 'Erro ao buscar colaboradores' })
+  }
+})
 
 // GET /retiradas?mes=202605&colaboradorId=xxx&page=1&limit=10
 router.get('/', async (req, res) => {
@@ -111,6 +111,8 @@ router.post('/', async (req, res) => {
     const { colaboradorId, itens, observacao } = req.body
     if (!colaboradorId || !itens || itens.length === 0)
       return res.status(400).json({ mensagem: 'Colaborador e itens são obrigatórios' })
+    if (itens.length > 50)
+      return res.status(400).json({ mensagem: 'Máximo de 50 itens por retirada' })
 
     const colaborador = await User.findById(colaboradorId)
     if (!colaborador || colaborador.perfil === 'admin' || !colaborador.ativo)

@@ -89,7 +89,7 @@ app.use('/api/comissoes',    require('./routes/comissao.routes'))
 app.use('/api/nfce',        require('./routes/nfce.routes'))
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', sistema: 'Cetep PDV API', versao: '1.0.0' })
+  res.json({ status: 'ok', sistema: 'PDV Soares API', versao: '1.0.0' })
 })
 
 app.get('/api/backup', require('./middleware/auth.middleware').protect, require('./middleware/auth.middleware').authorize('admin'), async (req, res) => {
@@ -143,7 +143,7 @@ if (require.main === module) {
   const httpServer = http.createServer(app)
   socket.init(httpServer, { origin: corsOriginCheck, credentials: true })
   httpServer.listen(PORT, () => {
-    logger.info(`Cetep PDV API rodando na porta ${PORT}`)
+    logger.info(`PDV Soares API rodando na porta ${PORT}`)
   })
   require('./config/backup').iniciar()
 
