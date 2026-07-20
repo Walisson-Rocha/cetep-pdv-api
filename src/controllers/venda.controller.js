@@ -276,9 +276,12 @@ const cancelar = async (req, res) => {
 
 const listar = async (req, res) => {
   try {
-    const { inicio, fim, formaPagamento, page = 1, limit = 20 } = req.query
+    const { inicio, fim, formaPagamento, numero, page = 1, limit = 20 } = req.query
     const filtro = {}
-    if (inicio || fim) {
+    if (numero) {
+      // Busca por número é exata — ignora o filtro de período, já que o objetivo é achar uma venda específica
+      filtro.numero = Number(numero)
+    } else if (inicio || fim) {
       filtro.createdAt = {}
       if (inicio) filtro.createdAt.$gte = new Date(inicio)
       if (fim) filtro.createdAt.$lte = new Date(fim)
