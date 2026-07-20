@@ -36,6 +36,13 @@ const configuracaoSchema = new mongoose.Schema({
   comissao: {
     ativa: { type: Boolean, default: false },
   },
+  limitesDesconto: {
+    admin:       { type: Number, default: 100, min: 0, max: 100 },
+    gerente:     { type: Number, default: 30,  min: 0, max: 100 },
+    caixa:       { type: Number, default: 10,  min: 0, max: 100 },
+    estoquista:  { type: Number, default: 0,   min: 0, max: 100 },
+    colaborador: { type: Number, default: 0,   min: 0, max: 100 },
+  },
   nfce: {
     ambiente:          { type: String, enum: ['homologacao', 'producao'], default: 'homologacao' },
     uf:                { type: String, default: 'SP' },

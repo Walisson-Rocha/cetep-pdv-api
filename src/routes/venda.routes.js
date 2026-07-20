@@ -11,6 +11,8 @@ const validarRegistrar = [
   body('itens').isArray({ min: 1 }).withMessage('A venda precisa ter ao menos um item'),
   body('itens.*.produtoId').isMongoId().withMessage('Produto inválido em um dos itens'),
   body('itens.*.quantidade').isFloat({ gt: 0 }).withMessage('Quantidade inválida em um dos itens'),
+  body('itens.*.precoUnitario').optional().isFloat({ gt: 0 }).withMessage('Preço inválido em um dos itens'),
+  body('itens.*.desconto').optional().isFloat({ min: 0 }).withMessage('Desconto inválido em um dos itens'),
   body('formaPagamento').isIn(FORMAS_PAGAMENTO).withMessage('Forma de pagamento inválida'),
   body('desconto').optional().isFloat({ min: 0 }).withMessage('Desconto inválido'),
   body('troco').optional().isFloat({ min: 0 }).withMessage('Troco inválido'),

@@ -19,6 +19,7 @@ const registrar = async (req, res) => {
     const config = await Configuracao.findOne().lean()
     const permitirEstoqueNegativo = config?.estoqueNegativo ?? false
     let subtotal = 0
+    let valorCatalogoTotal = 0
     const itensCompletos = []
     const produtoMap = new Map()
     for (const item of itens) {
@@ -39,6 +40,8 @@ const registrar = async (req, res) => {
       if (produto.precoAtacado > 0 && produto.quantidadeAtacado > 0 && item.quantidade >= produto.quantidadeAtacado) {
         precoUnitario = produto.precoAtacado
       }
+      // Preço de catálogo (sem override/desconto) — referência para o cálculo do % de desconto efetivo
+      const precoCatalogo = precoUnitario
       // Permite override de preço do frontend (atacado forçado, parcelamento, desconto por item)
       if (item.precoUnitario && item.precoUnitario > 0) {
         const precoCusto = produto.precoCusto || 0
@@ -53,18 +56,41 @@ const registrar = async (req, res) => {
         }
         precoUnitario = item.precoUnitario
       }
-      const itemSubtotal = (precoUnitario - (item.desconto || 0)) * item.quantidade
+      const descontoItem = item.desconto || 0
+      if (descontoItem < 0 || descontoItem > precoUnitario) {
+        return res.status(400).json({
+          mensagem: `Desconto do item não pode ser maior que o preço (R$${precoUnitario.toFixed(2)}) para ${produto.nome}`
+        })
+      }
+      const itemSubtotal = (precoUnitario - descontoItem) * item.quantidade
       subtotal += itemSubtotal
+      valorCatalogoTotal += precoCatalogo * item.quantidade
       itensCompletos.push({
         produto: produto._id,
         nomeProduto: produto.nome,
         quantidade: item.quantidade,
         precoUnitario,
-        desconto: item.desconto || 0,
+        desconto: descontoItem,
         subtotal: itemSubtotal
       })
     }
+    if (desconto < 0 || desconto > subtotal) {
+      return res.status(400).json({
+        mensagem: `Desconto (R$${desconto.toFixed(2)}) não pode ser maior que o subtotal da venda (R$${subtotal.toFixed(2)})`
+      })
+    }
     const total = Math.max(0, subtotal - desconto)
+
+    // Limite de desconto por perfil — só entra em vigor depois que o admin configurar pelo menos uma vez
+    if (config?.limitesDesconto && valorCatalogoTotal > 0) {
+      const limite = config.limitesDesconto[req.user.perfil] ?? 0
+      const descontoPercentual = ((valorCatalogoTotal - total) / valorCatalogoTotal) * 100
+      if (descontoPercentual > limite + 0.01) {
+        return res.status(400).json({
+          mensagem: `Desconto de ${descontoPercentual.toFixed(1)}% excede o limite do seu perfil (${limite}%). Peça autorização a um gerente ou administrador.`
+        })
+      }
+    }
 
     // Valida limite de crédito antes de registrar fiado
     if (formaPagamento === 'fiado' && clienteId) {
