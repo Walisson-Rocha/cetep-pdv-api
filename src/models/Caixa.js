@@ -15,8 +15,16 @@ const caixaSchema = new mongoose.Schema({
     registradoPor: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     em: { type: Date, default: Date.now }
   }],
+  trocas: [{
+    troca: { type: mongoose.Schema.Types.ObjectId, ref: 'Troca' },
+    diferenca: Number,
+    formaPagamento: String,
+    registradoPor: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    em: { type: Date, default: Date.now }
+  }],
   status: { type: String, enum: ['aberto', 'fechado'], default: 'aberto' },
   totalVendas: { type: Number, default: 0 },
+  totalTrocas: { type: Number, default: 0 },
   totalTransacoes: { type: Number, default: 0 },
   totalDinheiro: { type: Number, default: 0 },
   totalPix: { type: Number, default: 0 },

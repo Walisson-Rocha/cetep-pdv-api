@@ -15,7 +15,7 @@ const logSchema = new mongoose.Schema({
       'despesa_criada', 'usuario_criado', 'usuario_editado', 'usuario_desativado',
       'usuario_excluido_permanente', 'permissoes_atualizadas',
       'retirada_criada', 'folha_quitada', 'fiado_quitado', 'comissao_paga',
-      'conta_pagar_criada', 'conta_pagar_paga'
+      'conta_pagar_criada', 'conta_pagar_paga', 'troca_realizada'
     ],
     required: true
   },

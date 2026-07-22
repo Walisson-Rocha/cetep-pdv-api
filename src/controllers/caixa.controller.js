@@ -29,7 +29,7 @@ const fecharCaixa = async (req, res) => {
     const caixa = await Caixa.findOne({ _id: req.params.id, status: 'aberto' })
     if (!caixa) return res.status(400).json({ mensagem: 'Caixa não encontrado ou já fechado' })
     const totalSangrias = caixa.sangrias.reduce((acc, s) => acc + s.valor, 0)
-    const saldoFinal = caixa.saldoInicial + caixa.totalVendas - totalSangrias
+    const saldoFinal = caixa.saldoInicial + caixa.totalVendas + (caixa.totalTrocas || 0) - totalSangrias
     const diferenca = saldoContado - saldoFinal
     caixa.status = 'fechado'
     caixa.fechadoEm = new Date()
