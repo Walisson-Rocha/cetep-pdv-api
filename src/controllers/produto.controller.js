@@ -4,19 +4,87 @@ const Produto = require('../models/Produto')
 const Log = require('../models/Log')
 const HistoricoPreco = require('../models/HistoricoPreco')
 
+// Traduz o status virtual (statusEstoque) do model em condição de query do Mongo,
+// para poder filtrar e paginar no banco em vez de carregar tudo e filtrar em JS.
+const construirCondicaoStatus = (status, agora) => {
+  const limiteVencimento = new Date(agora.getTime() + 5 * 24 * 60 * 60 * 1000)
+  switch (status) {
+    case 'zerado':
+      return { estoque: 0 }
+    case 'baixo':
+      return { estoque: { $gt: 0 }, $expr: { $lte: ['$estoque', '$estoqueMinimo'] } }
+    case 'vencendo':
+      return {
+        estoque: { $gt: 0 },
+        $expr: { $gt: ['$estoque', '$estoqueMinimo'] },
+        validade: { $ne: null, $lte: limiteVencimento },
+      }
+    case 'normal':
+      return {
+        estoque: { $gt: 0 },
+        $expr: { $gt: ['$estoque', '$estoqueMinimo'] },
+        $or: [{ validade: null }, { validade: { $gt: limiteVencimento } }],
+      }
+    default:
+      return null
+  }
+}
+
+const combinarCondicoes = (condicoes) => {
+  const validas = condicoes.filter(Boolean)
+  if (validas.length === 0) return {}
+  return validas.length > 1 ? { $and: validas } : validas[0]
+}
+
 const listar = async (req, res) => {
   try {
     const { busca, categoria, status, page = 1, limit = 50, sort = 'nome' } = req.query
-    const filtro = { ativo: true }
+    const agora = new Date()
+    const limiteVencimento = new Date(agora.getTime() + 5 * 24 * 60 * 60 * 1000)
+
+    const condicoesBase = [{ ativo: true }]
     if (busca) {
       const safe = String(busca).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').slice(0, 100)
-      filtro.$or = [
-        { nome: { $regex: safe, $options: 'i' } },
-        { codigoBarras: busca },
-        { codigosBarras: busca }
-      ]
+      condicoesBase.push({
+        $or: [
+          { nome: { $regex: safe, $options: 'i' } },
+          { codigoBarras: busca },
+          { codigosBarras: busca }
+        ]
+      })
     }
-    if (categoria) filtro.categoria = categoria
+    if (categoria) condicoesBase.push({ categoria })
+    const matchBase = combinarCondicoes(condicoesBase)
+
+    // Uma única passada pela coleção calcula as 4 contagens (em vez de 4 count separados,
+    // cada um varrendo a coleção inteira — isso deixava a listagem lenta/travando)
+    const [agg] = await Produto.aggregate([
+      { $match: matchBase },
+      { $addFields: {
+          _baixo: { $and: [{ $gt: ['$estoque', 0] }, { $lte: ['$estoque', '$estoqueMinimo'] }] },
+          _vencendo: { $and: [
+            { $gt: ['$estoque', '$estoqueMinimo'] },
+            { $ne: ['$validade', null] },
+            { $lte: ['$validade', limiteVencimento] },
+          ] },
+      }},
+      { $group: {
+          _id: null,
+          todos: { $sum: 1 },
+          zerado: { $sum: { $cond: [{ $eq: ['$estoque', 0] }, 1, 0] } },
+          baixo: { $sum: { $cond: ['$_baixo', 1, 0] } },
+          vencendo: { $sum: { $cond: ['$_vencendo', 1, 0] } },
+      }},
+    ])
+    const contagens = {
+      todos: agg?.todos || 0,
+      zerado: agg?.zerado || 0,
+      baixo: agg?.baixo || 0,
+      vencendo: agg?.vencendo || 0,
+      normal: (agg?.todos || 0) - (agg?.zerado || 0) - (agg?.baixo || 0) - (agg?.vencendo || 0),
+    }
+
+    const filtro = combinarCondicoes([matchBase, construirCondicaoStatus(status, agora)])
     const sortObj = sort === 'novo' ? { createdAt: -1 } : { nome: 1 }
     const produtos = await Produto.find(filtro)
       .populate('categoria', 'nome cor icone')
@@ -24,9 +92,9 @@ const listar = async (req, res) => {
       .sort(sortObj)
       .limit(limit * 1)
       .skip((page - 1) * limit)
-    const total = await Produto.countDocuments(filtro)
-    const lista = status ? produtos.filter(p => p.statusEstoque === status) : produtos
-    res.json({ produtos: lista, total, paginas: Math.ceil(total / limit) })
+
+    const total = Object.prototype.hasOwnProperty.call(contagens, status) ? contagens[status] : contagens.todos
+    res.json({ produtos, total, paginas: Math.ceil(total / limit), contagens })
   } catch (error) {
     logger.error('Erro ao listar produtos:', error)
     res.status(500).json({ mensagem: 'Erro ao listar produtos' })
