@@ -331,7 +331,7 @@ const cancelar = async (req, res) => {
 
 const listar = async (req, res) => {
   try {
-    const { inicio, fim, formaPagamento, numero, page = 1, limit = 20 } = req.query
+    const { inicio, fim, formaPagamento, numero, produtoId, page = 1, limit = 20 } = req.query
     const filtro = {}
     if (numero) {
       // Busca por número é exata — ignora o filtro de período, já que o objetivo é achar uma venda específica
@@ -342,6 +342,8 @@ const listar = async (req, res) => {
       if (fim) filtro.createdAt.$lte = new Date(fim)
     }
     if (formaPagamento) filtro.formaPagamento = formaPagamento
+    // Busca por produto — usada pela tela de trocas pra localizar vendas que contêm um item específico
+    if (produtoId) filtro['itens.produto'] = produtoId
     const vendas = await Venda.find(filtro)
       .populate('cliente', 'nome')
       .populate('colaborador', 'nome')
