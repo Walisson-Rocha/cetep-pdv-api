@@ -33,6 +33,8 @@ describe('GET /api/produtos', () => {
       { _id: '507f1f77bcf86cd799439011', nome: 'Caneta', precoVenda: 5, statusEstoque: 'normal' },
       { _id: '507f1f77bcf86cd799439012', nome: 'Caderno', precoVenda: 15, statusEstoque: 'normal' },
     ]
+    // listar() calcula as contagens via Produto.aggregate() antes de buscar a página de produtos
+    Produto.aggregate.mockResolvedValue([{ todos: 2, zerado: 0, baixo: 0, vencendo: 0 }])
     Produto.find.mockReturnValue({
       populate: jest.fn().mockReturnThis(),
       sort: jest.fn().mockReturnThis(),
@@ -47,14 +49,20 @@ describe('GET /api/produtos', () => {
   })
 
   test('filtra por busca quando parâmetro fornecido', async () => {
+    Produto.aggregate.mockResolvedValue([])
     Produto.find.mockReturnValue({
       populate: jest.fn().mockReturnThis(), sort: jest.fn().mockReturnThis(),
       limit: jest.fn().mockReturnThis(), skip: jest.fn().mockResolvedValue([]),
     })
     Produto.countDocuments.mockResolvedValue(0)
     await request(app).get('/api/produtos?busca=caneta')
+    // listar() combina { ativo: true } + a condição de busca dentro de um $and
     expect(Produto.find).toHaveBeenCalledWith(expect.objectContaining({
-      $or: expect.arrayContaining([expect.objectContaining({ nome: expect.any(Object) })])
+      $and: expect.arrayContaining([
+        expect.objectContaining({
+          $or: expect.arrayContaining([expect.objectContaining({ nome: expect.any(Object) })])
+        })
+      ])
     }))
   })
 })

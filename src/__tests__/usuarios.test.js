@@ -46,10 +46,12 @@ describe('POST /api/usuarios', () => {
     expect(res.status).toBe(400)
   })
 
-  it('rejeita criação por não-admin', async () => {
-    const { token } = await criarUsuarioComToken({ perfil: 'gerente' })
+  it('rejeita criação por perfil sem permissão (caixa)', async () => {
+    // admin e gerente podem criar usuários (authorize('admin', 'gerente') na rota,
+    // mesmo padrão liberado em src/lib/permissoes.ts no frontend) — caixa não pode.
+    const { token } = await criarUsuarioComToken({ perfil: 'caixa' })
     const res = await request(app).post('/api/usuarios').set('Authorization', `Bearer ${token}`)
-      .send({ nome: 'X', email: 'naoadmin@exemplo.com', senha: 'senha123', telefone: '11988887777' })
+      .send({ nome: 'X', email: 'naoautorizado@exemplo.com', senha: 'senha123', telefone: '11988887777' })
     expect(res.status).toBe(403)
   })
 })

@@ -1,5 +1,6 @@
 jest.mock('../src/config/database')
 jest.mock('../src/models/Retirada')
+jest.mock('../src/models/QuitacaoFolha')
 jest.mock('../src/models/User')
 jest.mock('../src/models/Produto')
 jest.mock('../src/models/Log')
@@ -14,6 +15,7 @@ jest.mock('../src/middleware/auth.middleware', () => ({
 const request = require('supertest')
 const express = require('express')
 const Retirada = require('../src/models/Retirada')
+const QuitacaoFolha = require('../src/models/QuitacaoFolha')
 const User = require('../src/models/User')
 const Produto = require('../src/models/Produto')
 const Log = require('../src/models/Log')
@@ -53,6 +55,7 @@ describe('GET /api/retiradas/folha', () => {
     ]
     User.find.mockResolvedValue(colaboradores)
     Retirada.find.mockReturnValue({ populate: jest.fn().mockResolvedValue(retiradas) })
+    QuitacaoFolha.find.mockReturnValue({ populate: jest.fn().mockResolvedValue([]) })
     const res = await request(app).get('/api/retiradas/folha?mes=202605')
     expect(res.status).toBe(200)
     expect(res.body.folha).toHaveLength(1)
@@ -64,6 +67,7 @@ describe('GET /api/retiradas/folha', () => {
     const colId = { toString: () => 'col2' }
     User.find.mockResolvedValue([{ _id: colId, nome: 'Carlos', email: 'c@test.com' }])
     Retirada.find.mockReturnValue({ populate: jest.fn().mockResolvedValue([]) })
+    QuitacaoFolha.find.mockReturnValue({ populate: jest.fn().mockResolvedValue([]) })
     const res = await request(app).get('/api/retiradas/folha?mes=202605')
     expect(res.status).toBe(200)
     expect(res.body.folha[0].totalRetiradas).toBe(0)
@@ -80,7 +84,7 @@ describe('POST /api/retiradas', () => {
       itens: [{ produtoId: 'prod1', quantidade: 2 }],
     })
     expect(res.status).toBe(400)
-    expect(res.body.mensagem).toMatch(/colaborador inválido/i)
+    expect(res.body.mensagem).toMatch(/usuário inválido/i)
   })
 
   test('400 quando colaborador não existe (perfil !== colaborador)', async () => {
@@ -91,11 +95,11 @@ describe('POST /api/retiradas', () => {
       itens: [{ produtoId: 'p1', quantidade: 1 }],
     })
     expect(res.status).toBe(400)
-    expect(res.body.mensagem).toMatch(/colaborador inválido/i)
+    expect(res.body.mensagem).toMatch(/usuário inválido/i)
   })
 
   test('400 quando estoque insuficiente', async () => {
-    User.findById.mockResolvedValue({ _id: 'col1', nome: 'Fernanda', perfil: 'colaborador' })
+    User.findById.mockResolvedValue({ _id: 'col1', nome: 'Fernanda', perfil: 'colaborador', ativo: true })
     Produto.findById.mockResolvedValue({ _id: 'p1', nome: 'Caneta', estoque: 1, precoVenda: 5 })
     const res = await request(app).post('/api/retiradas').send({
       colaboradorId: 'col1',
@@ -106,7 +110,7 @@ describe('POST /api/retiradas', () => {
   })
 
   test('201 registra retirada e chama findByIdAndUpdate para descontar estoque', async () => {
-    User.findById.mockResolvedValue({ _id: 'col1', nome: 'Fernanda', perfil: 'colaborador' })
+    User.findById.mockResolvedValue({ _id: 'col1', nome: 'Fernanda', perfil: 'colaborador', ativo: true })
     Produto.findById.mockResolvedValue({ _id: 'p1', nome: 'Caneta', estoque: 10, precoVenda: 5 })
     // A rota usa Produto.findByIdAndUpdate (não produto.save) para decrementar estoque
     Produto.findByIdAndUpdate = jest.fn().mockResolvedValue({})
