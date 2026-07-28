@@ -27,14 +27,14 @@ describe('GET /api/clientes', () => {
       { _id: 'c1', nome: 'João Silva', tipo: 'PF', saldoFiado: 0 },
       { _id: 'c2', nome: 'Empresa LTDA', tipo: 'PJ', saldoFiado: 150 },
     ]
-    Cliente.find.mockReturnValue({ sort: jest.fn().mockResolvedValue(clientes) })
+    Cliente.find.mockReturnValue({ sort: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue(clientes) }) })
     const res = await request(app).get('/api/clientes')
     expect(res.status).toBe(200)
     expect(res.body.clientes).toHaveLength(2)
   })
 
   test('aplica busca por nome via regex', async () => {
-    Cliente.find.mockReturnValue({ sort: jest.fn().mockResolvedValue([]) })
+    Cliente.find.mockReturnValue({ sort: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue([]) }) })
     await request(app).get('/api/clientes?busca=João')
     expect(Cliente.find).toHaveBeenCalledWith(expect.objectContaining({
       ativo: true,

@@ -21,13 +21,14 @@ const registrar = async (req, res) => {
     let subtotal = 0
     let valorCatalogoTotal = 0
     const itensCompletos = []
-    const produtoMap = new Map()
+    // Busca todos os produtos do carrinho numa única consulta, em vez de um round-trip por item
+    const produtos = await Produto.find({ _id: { $in: itens.map(item => item.produtoId) } })
+    const produtoMap = new Map(produtos.map(p => [p._id.toString(), p]))
     for (const item of itens) {
-      const produto = await Produto.findById(item.produtoId)
+      const produto = produtoMap.get(item.produtoId)
       if (!produto || !produto.ativo) {
         return res.status(400).json({ mensagem: `Produto não encontrado: ${item.produtoId}` })
       }
-      produtoMap.set(produto._id.toString(), produto)
       if (!permitirEstoqueNegativo && produto.estoque < item.quantidade) {
         return res.status(400).json({
           mensagem: `Estoque insuficiente para ${produto.nome}`,
@@ -113,12 +114,25 @@ const registrar = async (req, res) => {
       caixa: caixa._id,
       vendedor: vendedorId || req.user._id
     })
+    // Busca os lotes de todos os produtos da venda numa única consulta (evita N+1 no FEFO)
+    const todosLotes = await Lote.find({
+      produto: { $in: itensCompletos.map(i => i.produto) }, ativo: true, quantidade: { $gt: 0 }
+    }).sort({ dataValidade: 1 })
+    const lotesPorProduto = new Map()
+    for (const lote of todosLotes) {
+      const key = lote.produto.toString()
+      if (!lotesPorProduto.has(key)) lotesPorProduto.set(key, [])
+      lotesPorProduto.get(key).push(lote)
+    }
+    const bulkEstoque = []
+    const movimentos = []
+    const bulkLotes = []
     for (const item of itensCompletos) {
       const produto = produtoMap.get(item.produto.toString())
       const estoqueAnterior = produto.estoque
       const estoqueAtual = produto.estoque - item.quantidade
-      await Produto.findByIdAndUpdate(produto._id, { $inc: { estoque: -item.quantidade } })
-      await MovimentoEstoque.create({
+      bulkEstoque.push({ updateOne: { filter: { _id: produto._id }, update: { $inc: { estoque: -item.quantidade } } } })
+      movimentos.push({
         produto: produto._id, tipo: 'saida',
         quantidade: item.quantidade,
         estoqueAnterior, estoqueAtual,
@@ -126,19 +140,26 @@ const registrar = async (req, res) => {
         venda: venda._id, responsavel: req.user._id
       })
       // FEFO: deduz dos lotes mais antigos primeiro
-      const lotes = await Lote.find({ produto: produto._id, ativo: true, quantidade: { $gt: 0 } }).sort({ dataValidade: 1 })
-      if (lotes.length > 0) {
-        let restante = item.quantidade
-        for (const lote of lotes) {
-          if (restante <= 0) break
-          const deduzir = Math.min(lote.quantidade, restante)
-          lote.quantidade -= deduzir
-          if (lote.quantidade === 0) lote.ativo = false
-          await lote.save()
-          restante -= deduzir
-        }
+      const lotes = lotesPorProduto.get(produto._id.toString()) || []
+      let restante = item.quantidade
+      for (const lote of lotes) {
+        if (restante <= 0) break
+        const deduzir = Math.min(lote.quantidade, restante)
+        lote.quantidade -= deduzir
+        bulkLotes.push({
+          updateOne: {
+            filter: { _id: lote._id },
+            update: { $set: { quantidade: lote.quantidade, ativo: lote.quantidade > 0 } }
+          }
+        })
+        restante -= deduzir
       }
     }
+    await Promise.all([
+      bulkEstoque.length ? Produto.bulkWrite(bulkEstoque) : null,
+      movimentos.length ? MovimentoEstoque.insertMany(movimentos) : null,
+      bulkLotes.length ? Lote.bulkWrite(bulkLotes) : null,
+    ])
     if (clienteId && (formaPagamento === 'fiado' || formaPagamento === 'misto')) {
       const valorFiado = formaPagamento === 'misto'
         ? (formasPagamento.find(p => p.metodo === 'fiado')?.valor || 0)
@@ -218,13 +239,17 @@ const cancelar = async (req, res) => {
     if (!['admin', 'gerente'].includes(req.user.perfil)) {
       return res.status(403).json({ mensagem: 'Sem permissão para cancelar vendas' })
     }
+    const produtosCancelados = await Produto.find({ _id: { $in: venda.itens.map(i => i.produto) } })
+    const produtoMapCancel = new Map(produtosCancelados.map(p => [p._id.toString(), p]))
+    const bulkEstoqueCancel = []
+    const movimentosCancel = []
     for (const item of venda.itens) {
-      const produto = await Produto.findById(item.produto)
+      const produto = produtoMapCancel.get(item.produto.toString())
       if (produto) {
         const estoqueAnterior = produto.estoque
         const estoqueAtual = produto.estoque + item.quantidade
-        await Produto.findByIdAndUpdate(produto._id, { $inc: { estoque: item.quantidade } })
-        await MovimentoEstoque.create({
+        bulkEstoqueCancel.push({ updateOne: { filter: { _id: produto._id }, update: { $inc: { estoque: item.quantidade } } } })
+        movimentosCancel.push({
           produto: produto._id, tipo: 'entrada',
           quantidade: item.quantidade,
           estoqueAnterior, estoqueAtual,
@@ -233,6 +258,10 @@ const cancelar = async (req, res) => {
         })
       }
     }
+    await Promise.all([
+      bulkEstoqueCancel.length ? Produto.bulkWrite(bulkEstoqueCancel) : null,
+      movimentosCancel.length ? MovimentoEstoque.insertMany(movimentosCancel) : null,
+    ])
     if (venda.formaPagamento === 'fiado' && venda.cliente) {
       await Cliente.findByIdAndUpdate(venda.cliente, { $inc: { saldoFiado: -venda.total } })
     }

@@ -40,7 +40,7 @@ beforeEach(() => {
 describe('GET /api/relatorio/vendas', () => {
   test('200 retorna relatório de vendas com totais', async () => {
     const vendas = [mockVenda(), mockVenda({ total: 50, formaPagamento: 'dinheiro' })]
-    Venda.find.mockReturnValue({ populate: jest.fn().mockReturnThis(), sort: jest.fn().mockResolvedValue(vendas) })
+    Venda.find.mockReturnValue({ populate: jest.fn().mockReturnThis(), sort: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue(vendas) })
     const res = await request(app).get('/api/relatorio/vendas')
     expect(res.status).toBe(200)
     expect(res.body).toHaveProperty('total')
@@ -51,7 +51,7 @@ describe('GET /api/relatorio/vendas', () => {
   })
 
   test('200 retorna lista vazia quando não há vendas', async () => {
-    Venda.find.mockReturnValue({ populate: jest.fn().mockReturnThis(), sort: jest.fn().mockResolvedValue([]) })
+    Venda.find.mockReturnValue({ populate: jest.fn().mockReturnThis(), sort: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue([]) })
     const res = await request(app).get('/api/relatorio/vendas')
     expect(res.status).toBe(200)
     expect(res.body.total).toBe(0)
@@ -59,7 +59,7 @@ describe('GET /api/relatorio/vendas', () => {
   })
 
   test('200 filtra por data quando início e fim informados', async () => {
-    Venda.find.mockReturnValue({ populate: jest.fn().mockReturnThis(), sort: jest.fn().mockResolvedValue([]) })
+    Venda.find.mockReturnValue({ populate: jest.fn().mockReturnThis(), sort: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue([]) })
     const res = await request(app).get('/api/relatorio/vendas?inicio=2026-01-01&fim=2026-01-31')
     expect(res.status).toBe(200)
     expect(Venda.find).toHaveBeenCalledWith(expect.objectContaining({ createdAt: expect.any(Object) }))
@@ -68,14 +68,14 @@ describe('GET /api/relatorio/vendas', () => {
   test('200 calcula comissão quando config comissao ativa', async () => {
     Configuracao.findOne.mockReturnValue({ lean: jest.fn().mockResolvedValue({ comissao: { ativa: true } }) })
     const vendas = [mockVenda()]
-    Venda.find.mockReturnValue({ populate: jest.fn().mockReturnThis(), sort: jest.fn().mockResolvedValue(vendas) })
+    Venda.find.mockReturnValue({ populate: jest.fn().mockReturnThis(), sort: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue(vendas) })
     const res = await request(app).get('/api/relatorio/vendas')
     expect(res.status).toBe(200)
     expect(res.body.comissaoAtiva).toBe(true)
   })
 
   test('500 retorna erro interno em falha', async () => {
-    Venda.find.mockReturnValue({ populate: jest.fn().mockReturnThis(), sort: jest.fn().mockRejectedValue(new Error('DB down')) })
+    Venda.find.mockReturnValue({ populate: jest.fn().mockReturnThis(), sort: jest.fn().mockReturnThis(), lean: jest.fn().mockRejectedValue(new Error('DB down')) })
     const res = await request(app).get('/api/relatorio/vendas')
     expect(res.status).toBe(500)
   })
@@ -123,7 +123,7 @@ describe('GET /api/relatorio/clientes', () => {
 describe('GET /api/relatorio/logs', () => {
   test('200 retorna lista de logs paginada', async () => {
     const logs = [{ _id: 'l1', acao: 'venda_realizada' }, { _id: 'l2', acao: 'caixa_aberto' }]
-    Log.find.mockReturnValue({ sort: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), skip: jest.fn().mockResolvedValue(logs) })
+    Log.find.mockReturnValue({ sort: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), skip: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue(logs) })
     Log.countDocuments.mockResolvedValue(2)
     const res = await request(app).get('/api/relatorio/logs')
     expect(res.status).toBe(200)
@@ -132,7 +132,7 @@ describe('GET /api/relatorio/logs', () => {
   })
 
   test('500 retorna erro interno em falha', async () => {
-    Log.find.mockReturnValue({ sort: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), skip: jest.fn().mockRejectedValue(new Error('DB down')) })
+    Log.find.mockReturnValue({ sort: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), skip: jest.fn().mockReturnThis(), lean: jest.fn().mockRejectedValue(new Error('DB down')) })
     const res = await request(app).get('/api/relatorio/logs')
     expect(res.status).toBe(500)
   })
@@ -179,20 +179,22 @@ describe('GET /api/relatorio/lucratividade', () => {
 // ─── GET /api/relatorio/produtos-parados ─────────────────────────────────────
 describe('GET /api/relatorio/produtos-parados', () => {
   test('200 retorna produtos não vendidos nos últimos 30 dias', async () => {
-    const vendidos = [{ itens: [{ produto: { toString: () => 'p1' } }] }]
+    // produtos-parados agora usa uma agregação ($unwind + $group) pra achar os IDs
+    // distintos vendidos, em vez de carregar as vendas inteiras do período
+    const idsVendidosAgg = [{ _id: { toString: () => 'p1' } }]
     const todos = [
       { _id: { toString: () => 'p1' }, nome: 'Cerveja', ativo: true, categoria: { nome: 'Bebidas' } },
       { _id: { toString: () => 'p2' }, nome: 'Biscoito', ativo: true, categoria: { nome: 'Snacks' } },
     ]
-    Venda.find.mockResolvedValue(vendidos)
-    Produto.find.mockReturnValue({ populate: jest.fn().mockResolvedValue(todos) })
+    Venda.aggregate.mockResolvedValue(idsVendidosAgg)
+    Produto.find.mockReturnValue({ populate: jest.fn().mockReturnThis(), lean: jest.fn().mockResolvedValue(todos) })
     const res = await request(app).get('/api/relatorio/produtos-parados')
     expect(res.status).toBe(200)
     expect(res.body).toHaveProperty('parados')
   })
 
   test('500 retorna erro interno em falha', async () => {
-    Venda.find.mockRejectedValue(new Error('DB down'))
+    Venda.aggregate.mockRejectedValue(new Error('DB down'))
     const res = await request(app).get('/api/relatorio/produtos-parados')
     expect(res.status).toBe(500)
   })

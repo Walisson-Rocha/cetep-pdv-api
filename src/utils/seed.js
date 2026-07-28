@@ -30,7 +30,8 @@ const seed = async () => {
 
   // ── USUÁRIOS ──────────────────────────────────────────────────────────────
   const hash = await bcrypt.hash('123456', 12)
-  const [uAdmin, uGerente, uCaixa, uEstoque, uColab] = [oid(), oid(), oid(), oid(), oid()]
+  const hashFernando = await bcrypt.hash('1234', 12)
+  const [uAdmin, uGerente, uCaixa, uEstoque, uColab, uFernando] = [oid(), oid(), oid(), oid(), oid(), oid()]
 
   await User.collection.insertMany([
     { _id: uAdmin,   nome: 'Evandro Soares',  email: 'admin@soares.com',    senha: hash, perfil: 'admin',       ativo: true, ultimoAcesso: dt(13,8),  createdAt: dt(1,8), updatedAt: dt(13,8) },
@@ -38,8 +39,9 @@ const seed = async () => {
     { _id: uCaixa,   nome: 'Ana Paula',       email: 'ana@soares.com',      senha: hash, perfil: 'caixa',       ativo: true, ultimoAcesso: dt(13,8),  createdAt: dt(1,8), updatedAt: dt(13,8) },
     { _id: uEstoque, nome: 'Marcos Silva',    email: 'marcos@soares.com',   senha: hash, perfil: 'estoquista',  ativo: true, ultimoAcesso: dt(12,17), createdAt: dt(1,8), updatedAt: dt(12,17) },
     { _id: uColab,   nome: 'Fernanda Costa',  email: 'fernanda@soares.com', senha: hash, perfil: 'colaborador', ativo: true, ultimoAcesso: dt(13,9),  createdAt: dt(1,8), updatedAt: dt(13,9) },
+    { _id: uFernando,nome: 'Fernando',        email: 'fernando@soares.com', senha: hashFernando, perfil: 'admin', ativo: true, ultimoAcesso: dt(13,8), createdAt: dt(1,8), updatedAt: dt(13,8) },
   ])
-  console.log('👥 5 usuários criados')
+  console.log('👥 6 usuários criados')
 
   // ── CATEGORIAS ────────────────────────────────────────────────────────────
   const [catPap, catEsc, catSau, catLan, catBom, catBri, catLar, catArm,

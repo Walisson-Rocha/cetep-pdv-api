@@ -19,7 +19,7 @@ router.get('/', async (req, res) => {
         { telefone: { $regex: safe, $options: 'i' } }
       ]
     }
-    const clientes = await Cliente.find(filtro).sort({ nome: 1 })
+    const clientes = await Cliente.find(filtro).sort({ nome: 1 }).lean()
     res.json({ clientes })
   } catch (error) {
     logger.error('Erro ao buscar clientes:', error)

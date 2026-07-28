@@ -203,14 +203,17 @@ const deletar = async (req, res) => {
 
 const alertas = async (req, res) => {
   try {
-    const produtos = await Produto.find({ ativo: true }).populate('categoria', 'nome')
-    const zerados = produtos.filter(p => p.estoque === 0)
-    const baixos = produtos.filter(p => p.estoque > 0 && p.estoque <= p.estoqueMinimo)
-    const vencendo = produtos.filter(p => {
-      if (!p.validade) return false
-      const dias = Math.ceil((new Date(p.validade) - new Date()) / (1000 * 60 * 60 * 24))
-      return dias <= 5 && dias >= 0
-    })
+    // Reaproveita os mesmos filtros de status usados em listar(), já traduzidos pra
+    // condição de query — em vez de carregar o catálogo inteiro e filtrar em JS 3x.
+    const agora = new Date()
+    const [zerados, baixos, vencendo] = await Promise.all([
+      Produto.find(combinarCondicoes([{ ativo: true }, construirCondicaoStatus('zerado', agora)]))
+        .select('nome estoque').lean(),
+      Produto.find(combinarCondicoes([{ ativo: true }, construirCondicaoStatus('baixo', agora)]))
+        .select('nome estoque').lean(),
+      Produto.find(combinarCondicoes([{ ativo: true }, construirCondicaoStatus('vencendo', agora)]))
+        .select('nome estoque validade').lean(),
+    ])
     res.json({ zerados, baixos, vencendo })
   } catch (error) {
     logger.error('Erro ao buscar alertas:', error)
@@ -224,11 +227,15 @@ const reajustarPrecos = async (req, res) => {
     if (!percentual || percentual === 0) return res.status(400).json({ mensagem: 'Informe um percentual válido' })
     const filtro = { ativo: true }
     if (categoriaId) filtro.categoria = categoriaId
-    const produtos = await Produto.find(filtro)
+    const produtos = await Produto.find(filtro).select('precoVenda').lean()
     const fator = 1 + (percentual / 100)
-    for (const p of produtos) {
-      const precoNovo = Math.round(p.precoVenda * fator * 100) / 100
-      await Produto.findByIdAndUpdate(p._id, { precoVenda: precoNovo })
+    if (produtos.length > 0) {
+      await Produto.bulkWrite(produtos.map(p => ({
+        updateOne: {
+          filter: { _id: p._id },
+          update: { precoVenda: Math.round(p.precoVenda * fator * 100) / 100 }
+        }
+      })))
     }
     await Log.create({
       usuario: req.user._id, nomeUsuario: req.user.nome,

@@ -60,9 +60,19 @@ describe('GET /api/produtos', () => {
 })
 
 // ─── GET /api/produtos/alertas ────────────────────────────────────────────────
+// alertas() faz 3 consultas direcionadas (zerado/baixo/vencendo), na mesma ordem
+// do Promise.all — mockImplementationOnce encadeado simula cada uma em sequência.
+function mockAlertas({ zerados = [], baixos = [], vencendo = [] } = {}) {
+  const chain = (lista) => ({ select: () => ({ lean: () => Promise.resolve(lista) }) })
+  Produto.find
+    .mockImplementationOnce(() => chain(zerados))
+    .mockImplementationOnce(() => chain(baixos))
+    .mockImplementationOnce(() => chain(vencendo))
+}
+
 describe('GET /api/produtos/alertas', () => {
   test('200 retorna zerados, baixos e vencendo', async () => {
-    Produto.find.mockReturnValue({ populate: jest.fn().mockResolvedValue([]) })
+    mockAlertas()
     const res = await request(app).get('/api/produtos/alertas')
     expect(res.status).toBe(200)
     expect(res.body).toHaveProperty('zerados')
@@ -71,24 +81,21 @@ describe('GET /api/produtos/alertas', () => {
   })
 
   test('classifica zerados vs baixos corretamente', async () => {
-    const produtos = [
-      { _id: '507f1f77bcf86cd799439011', estoque: 0, estoqueMinimo: 5, validade: null },
-      { _id: '507f1f77bcf86cd799439012', estoque: 2, estoqueMinimo: 5, validade: null },
-      { _id: '507f1f77bcf86cd799439013', estoque: 20, estoqueMinimo: 5, validade: null },
-    ]
-    Produto.find.mockReturnValue({ populate: jest.fn().mockResolvedValue(produtos) })
+    const zerado = { _id: '507f1f77bcf86cd799439011', estoque: 0 }
+    const baixo = { _id: '507f1f77bcf86cd799439012', estoque: 2 }
+    mockAlertas({ zerados: [zerado], baixos: [baixo] })
     const res = await request(app).get('/api/produtos/alertas')
     expect(res.body.zerados.map(p => p._id)).toContain('507f1f77bcf86cd799439011')
     expect(res.body.baixos.map(p => p._id)).toContain('507f1f77bcf86cd799439012')
-    expect(res.body.zerados.map(p => p._id)).not.toContain('507f1f77bcf86cd799439013')
-    expect(res.body.baixos.map(p => p._id)).not.toContain('507f1f77bcf86cd799439013')
+    expect(res.body.zerados.map(p => p._id)).not.toContain('507f1f77bcf86cd799439012')
+    expect(res.body.baixos.map(p => p._id)).not.toContain('507f1f77bcf86cd799439011')
   })
 
   test('identifica produtos vencendo em até 5 dias', async () => {
     const amanha = new Date()
     amanha.setDate(amanha.getDate() + 2)
-    const produtos = [{ _id: '507f1f77bcf86cd799439011', estoque: 10, estoqueMinimo: 5, validade: amanha }]
-    Produto.find.mockReturnValue({ populate: jest.fn().mockResolvedValue(produtos) })
+    const produto = { _id: '507f1f77bcf86cd799439011', estoque: 10, validade: amanha }
+    mockAlertas({ vencendo: [produto] })
     const res = await request(app).get('/api/produtos/alertas')
     expect(res.body.vencendo.map(p => p._id)).toContain('507f1f77bcf86cd799439011')
   })

@@ -23,7 +23,8 @@ router.get('/vendas', authorize('admin', 'gerente'), async (req, res) => {
       Venda.find(filtro)
         .populate('vendedor', 'nome comissao')
         .populate({ path: 'itens.produto', select: 'categoria', populate: { path: 'categoria', select: 'nome icone' } })
-        .sort({ createdAt: -1 }),
+        .sort({ createdAt: -1 })
+        .lean(),
       Configuracao.findOne().lean()
     ])
     const comissaoAtiva = config?.comissao?.ativa ?? false
@@ -131,6 +132,7 @@ router.get('/logs', authorize('admin', 'gerente'), async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)
+      .lean()
     const total = await Log.countDocuments()
     res.json({ logs, total, paginas: Math.ceil(total / limit) })
   } catch (error) {
@@ -210,11 +212,15 @@ router.get('/produtos-parados', authorize('admin', 'gerente'), async (req, res) 
   try {
     const trintaDiasAtras = new Date()
     trintaDiasAtras.setDate(trintaDiasAtras.getDate() - 30)
-    const [vendidos, todos] = await Promise.all([
-      Venda.find({ createdAt: { $gte: trintaDiasAtras }, cancelada: false }),
-      Produto.find({ ativo: true }).populate('categoria', 'nome')
+    const [idsVendidosAgg, todos] = await Promise.all([
+      Venda.aggregate([
+        { $match: { createdAt: { $gte: trintaDiasAtras }, cancelada: false } },
+        { $unwind: '$itens' },
+        { $group: { _id: '$itens.produto' } },
+      ]),
+      Produto.find({ ativo: true }).populate('categoria', 'nome').lean()
     ])
-    const idsVendidos = new Set(vendidos.flatMap(v => v.itens.map(i => i.produto.toString())))
+    const idsVendidos = new Set(idsVendidosAgg.map(d => d._id.toString()))
     const parados = todos.filter(p => !idsVendidos.has(p._id.toString()))
     res.json({ parados })
   } catch (error) {
@@ -226,7 +232,7 @@ router.get('/produtos-parados', authorize('admin', 'gerente'), async (req, res) 
 router.get('/consumo-colaborador', authorize('admin', 'gerente'), async (req, res) => {
   try {
     const { colaboradorId, inicio, fim } = req.query
-    const colaboradores = await User.find({ perfil: 'colaborador', ativo: true }, 'nome email').sort({ nome: 1 })
+    const colaboradores = await User.find({ perfil: 'colaborador', ativo: true }, 'nome email').sort({ nome: 1 }).lean()
     if (!colaboradorId) {
       return res.json({ colaboradores, retiradas: [], itens: [], totais: { totalValor: 0, totalItens: 0, qtdRetiradas: 0 } })
     }
@@ -237,6 +243,7 @@ router.get('/consumo-colaborador', authorize('admin', 'gerente'), async (req, re
       .populate('colaborador', 'nome email')
       .populate('registradaPor', 'nome')
       .sort({ createdAt: -1 })
+      .lean()
     const porProduto = {}
     retiradas.forEach(r => {
       r.itens.forEach(item => {
@@ -265,7 +272,7 @@ router.get('/consumo-todos-colaboradores', authorize('admin', 'gerente'), async 
     if (fim) filtro.createdAt = { ...(filtro.createdAt || {}), $lte: new Date(new Date(fim).setHours(23, 59, 59, 999)) }
 
     const [colaboradores, retiradas] = await Promise.all([
-      User.find({ perfil: 'colaborador', ativo: true }, 'nome email').sort({ nome: 1 }),
+      User.find({ perfil: 'colaborador', ativo: true }, 'nome email').sort({ nome: 1 }).lean(),
       Retirada.find(filtro).populate('colaborador', 'nome email').lean(),
     ])
 
@@ -314,6 +321,7 @@ router.get('/categorias-por-vendedor', authorize('admin', 'gerente'), async (req
       .populate('vendedor', 'nome')
       .populate({ path: 'itens.produto', select: 'categoria', populate: { path: 'categoria', select: 'nome icone' } })
       .sort({ createdAt: -1 })
+      .lean()
     const porVendedorCategoria = {}
     vendas.forEach(v => {
       const vendNome = v.vendedor?.nome || 'Sem vendedor'

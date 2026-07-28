@@ -45,7 +45,9 @@ function mockProdutoDisponivel(overrides = {}) {
     save: jest.fn().mockResolvedValue(true),
     ...overrides,
   }
-  Produto.findById.mockResolvedValue(prod)
+  // registrar() busca todos os produtos do carrinho numa única Produto.find({_id:{$in:...}})
+  Produto.find.mockResolvedValue([prod])
+  Produto.bulkWrite.mockResolvedValue({})
   return prod
 }
 
@@ -60,7 +62,7 @@ function mockVendaCriada(overrides = {}) {
       }),
     }),
   })
-  MovimentoEstoque.create.mockResolvedValue({})
+  MovimentoEstoque.insertMany.mockResolvedValue([])
   Log.create.mockResolvedValue({})
   return venda
 }
@@ -85,7 +87,7 @@ describe('POST /api/vendas', () => {
 
   test('400 quando produto não existe', async () => {
     mockCaixaAberto()
-    Produto.findById.mockResolvedValue(null)
+    Produto.find.mockResolvedValue([])
     const res = await request(app).post('/api/vendas').send({
       itens: [{ produtoId: '507f1f77bcf86cd799439032', quantidade: 1 }],
       formaPagamento: 'pix',
@@ -118,7 +120,7 @@ describe('POST /api/vendas', () => {
     expect(res.status).toBe(201)
     expect(res.body.venda.numero).toBe(42)
     expect(Venda.create).toHaveBeenCalledTimes(1)
-    expect(MovimentoEstoque.create).toHaveBeenCalledTimes(1)
+    expect(MovimentoEstoque.insertMany).toHaveBeenCalledTimes(1)
     expect(Log.create).toHaveBeenCalledTimes(1)
   })
 
@@ -173,12 +175,15 @@ describe('PUT /api/vendas/:id/cancelar', () => {
       save: jest.fn().mockResolvedValue(true),
     }
     Venda.findById.mockResolvedValue(venda)
-    Produto.findById.mockResolvedValue(mockProd)
-    MovimentoEstoque.create.mockResolvedValue({})
+    Produto.find.mockResolvedValue([mockProd])
+    Produto.bulkWrite.mockResolvedValue({})
+    MovimentoEstoque.insertMany.mockResolvedValue([])
     Log.create.mockResolvedValue({})
     const res = await request(app).put('/api/vendas/507f1f77bcf86cd799439051/cancelar').send({ motivo: 'Pedido do cliente' })
     expect(res.status).toBe(200)
-    expect(Produto.findByIdAndUpdate).toHaveBeenCalledWith(mockProd._id, { $inc: { estoque: 2 } })
+    expect(Produto.bulkWrite).toHaveBeenCalledWith([
+      { updateOne: { filter: { _id: mockProd._id }, update: { $inc: { estoque: 2 } } } },
+    ])
     expect(venda.cancelada).toBe(true)
     expect(venda.motivoCancelamento).toBe('Pedido do cliente')
   })
@@ -191,9 +196,10 @@ describe('PUT /api/vendas/:id/cancelar', () => {
       save: jest.fn().mockResolvedValue(true),
     }
     Venda.findById.mockResolvedValue(venda)
-    Produto.findById.mockResolvedValue({ _id: '507f1f77bcf86cd799439061', estoque: 0, save: jest.fn() })
+    Produto.find.mockResolvedValue([{ _id: '507f1f77bcf86cd799439061', estoque: 0, save: jest.fn() }])
+    Produto.bulkWrite.mockResolvedValue({})
     Cliente.findByIdAndUpdate.mockResolvedValue({})
-    MovimentoEstoque.create.mockResolvedValue({})
+    MovimentoEstoque.insertMany.mockResolvedValue([])
     Log.create.mockResolvedValue({})
     await request(app).put('/api/vendas/507f1f77bcf86cd799439051/cancelar').send({ motivo: 'Devolvido' })
     expect(Cliente.findByIdAndUpdate).toHaveBeenCalledWith('507f1f77bcf86cd799439041', { $inc: { saldoFiado: -50 } })
