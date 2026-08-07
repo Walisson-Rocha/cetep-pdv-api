@@ -29,10 +29,19 @@ router.get('/vendas', authorize('admin', 'gerente'), async (req, res) => {
     ])
     const comissaoAtiva = config?.comissao?.ativa ?? false
     const total = vendas.reduce((acc, v) => acc + v.total, 0)
-    const porForma = vendas.reduce((acc, v) => {
-      acc[v.formaPagamento] = (acc[v.formaPagamento] || 0) + v.total
-      return acc
-    }, {})
+    // Pagamento misto não entra inteiro num balde "misto" — cada parcela soma no método
+    // real (dinheiro/pix/etc), pra bater com o fechamento de caixa por forma de pagamento
+    const porForma = {}
+    for (const v of vendas) {
+      if (v.formaPagamento === 'misto' && v.formasPagamento?.length) {
+        for (const fp of v.formasPagamento) {
+          const metodo = fp.metodo || 'misto'
+          porForma[metodo] = (porForma[metodo] || 0) + (fp.valor || 0)
+        }
+      } else {
+        porForma[v.formaPagamento] = (porForma[v.formaPagamento] || 0) + v.total
+      }
+    }
     const porVendedor = {}
     const porCategoria = {}
     const porCategoriaDetalhe = {}

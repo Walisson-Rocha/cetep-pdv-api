@@ -3,6 +3,7 @@ const socket = require('../config/socket')
 const Produto = require('../models/Produto')
 const Log = require('../models/Log')
 const HistoricoPreco = require('../models/HistoricoPreco')
+const { calcularEstoqueCombo } = require('../utils/comboEstoque')
 
 // Traduz o status virtual (statusEstoque) do model em condição de query do Mongo,
 // para poder filtrar e paginar no banco em vez de carregar tudo e filtrar em JS.
@@ -89,9 +90,15 @@ const listar = async (req, res) => {
     const produtos = await Produto.find(filtro)
       .populate('categoria', 'nome cor icone')
       .populate('fornecedor', 'nome')
+      .populate('componentes.produto', 'estoque')
       .sort(sortObj)
       .limit(limit * 1)
       .skip((page - 1) * limit)
+
+    // Combo/kit não tem estoque próprio — é sempre o mínimo entre o que os componentes permitem montar
+    for (const p of produtos) {
+      if (p.tipo === 'combo') p.estoque = calcularEstoqueCombo(p.componentes)
+    }
 
     const total = Object.prototype.hasOwnProperty.call(contagens, status) ? contagens[status] : contagens.todos
     res.json({ produtos, total, paginas: Math.ceil(total / limit), contagens })
@@ -107,7 +114,9 @@ const buscarPorCodigo = async (req, res) => {
       $or: [{ codigoBarras: req.params.codigo }, { codigosBarras: req.params.codigo }],
       ativo: true
     }).populate('categoria', 'nome cor icone')
+      .populate('componentes.produto', 'nome precoVenda estoque unidade')
     if (!produto) return res.status(404).json({ mensagem: 'Produto não encontrado' })
+    if (produto.tipo === 'combo') produto.estoque = calcularEstoqueCombo(produto.componentes)
     res.json({ produto })
   } catch (error) {
     logger.error('Erro na busca:', error)
@@ -121,6 +130,7 @@ const buscarPorId = async (req, res) => {
       .populate('categoria', 'nome cor icone')
       .populate('componentes.produto', 'nome precoVenda estoque unidade')
     if (!produto) return res.status(404).json({ mensagem: 'Produto não encontrado' })
+    if (produto.tipo === 'combo') produto.estoque = calcularEstoqueCombo(produto.componentes)
     res.json({ produto })
   } catch (error) {
     logger.error('Erro ao buscar produto:', error)
@@ -128,8 +138,19 @@ const buscarPorId = async (req, res) => {
   }
 }
 
+// Combo não pode conter outro combo como componente — evita ter que suportar composição recursiva
+const validarComponentesNaoCombo = async (body) => {
+  if (body.tipo !== 'combo' || !Array.isArray(body.componentes) || !body.componentes.length) return null
+  const idsComponentes = body.componentes.map(c => c.produto).filter(Boolean)
+  const combosAninhados = await Produto.find({ _id: { $in: idsComponentes }, tipo: 'combo' }).select('nome')
+  if (!combosAninhados.length) return null
+  return `Um combo não pode conter outro combo/kit como componente: ${combosAninhados.map(c => c.nome).join(', ')}`
+}
+
 const criar = async (req, res) => {
   try {
+    const erroCombo = await validarComponentesNaoCombo(req.body)
+    if (erroCombo) return res.status(400).json({ mensagem: erroCombo })
     const produto = await Produto.create(req.body)
     await produto.populate('categoria', 'nome cor icone')
     await Log.create({
@@ -153,6 +174,8 @@ const atualizar = async (req, res) => {
   try {
     const produtoAntes = await Produto.findById(req.params.id)
     if (!produtoAntes) return res.status(404).json({ mensagem: 'Produto não encontrado' })
+    const erroCombo = await validarComponentesNaoCombo(req.body)
+    if (erroCombo) return res.status(400).json({ mensagem: erroCombo })
     const precoVendaMudou = req.body.precoVenda !== undefined && parseFloat(req.body.precoVenda) !== produtoAntes.precoVenda
     const precoCustoMudou = req.body.precoCusto !== undefined && parseFloat(req.body.precoCusto) !== produtoAntes.precoCusto
     if (precoVendaMudou || precoCustoMudou) {

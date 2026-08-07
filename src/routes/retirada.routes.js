@@ -200,6 +200,54 @@ router.post('/quitar', async (req, res) => {
   }
 })
 
+// POST /retiradas/quitar-tudo — quita de uma vez todos os colaboradores com saldo em aberto no mês
+router.post('/quitar-tudo', async (req, res) => {
+  try {
+    const { mes, observacao } = req.body
+    if (!mes) return res.status(400).json({ mensagem: 'mes é obrigatório' })
+    const mesInt = parseInt(mes)
+
+    const [retiradas, quitacoesExistentes] = await Promise.all([
+      Retirada.find({ mes: mesInt }),
+      QuitacaoFolha.find({ mes: mesInt }),
+    ])
+    const quitadoPorColaborador = new Map(quitacoesExistentes.map(q => [q.colaborador.toString(), q.total]))
+    const totalPorColaborador = new Map()
+    for (const r of retiradas) {
+      const key = r.colaborador.toString()
+      totalPorColaborador.set(key, (totalPorColaborador.get(key) || 0) + r.total)
+    }
+    const pendentes = [...totalPorColaborador.entries()].filter(([id, total]) => (quitadoPorColaborador.get(id) || 0) < total - 0.01)
+    if (!pendentes.length) return res.status(400).json({ mensagem: 'Não há contas pendentes para quitar neste mês' })
+
+    const colaboradores = await User.find({ _id: { $in: pendentes.map(([id]) => id) } }, 'nome')
+    const nomePorId = new Map(colaboradores.map(c => [c._id.toString(), c.nome]))
+
+    await QuitacaoFolha.bulkWrite(pendentes.map(([id, total]) => ({
+      updateOne: {
+        filter: { colaborador: id, mes: mesInt },
+        update: { total, observacao: observacao || '', registradaPor: req.user._id },
+        upsert: true,
+      },
+    })))
+
+    const totalGeral = pendentes.reduce((acc, [, total]) => acc + total, 0)
+    await Log.create({
+      usuario: req.user._id, nomeUsuario: req.user.nome,
+      acao: 'folha_quitada',
+      detalhes: `Folha quitada em lote — ${mesInt} — ${pendentes.length} colaborador(es) — R$${totalGeral.toFixed(2)}`,
+    })
+
+    res.json({
+      mensagem: `${pendentes.length} conta(s) quitada(s) — R$${totalGeral.toFixed(2)}`,
+      quitados: pendentes.map(([id, total]) => ({ colaboradorId: id, nome: nomePorId.get(id), total })),
+    })
+  } catch (error) {
+    logger.error('Erro ao quitar folha em lote:', error)
+    res.status(500).json({ mensagem: 'Erro ao quitar folha em lote' })
+  }
+})
+
 // DELETE /retiradas/quitar/:colaboradorId — desfaz quitação de um mês
 router.delete('/quitar/:colaboradorId', async (req, res) => {
   try {

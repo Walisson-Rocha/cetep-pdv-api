@@ -2,11 +2,27 @@ const logger = require('../config/logger')
 const express = require('express')
 const router = express.Router()
 const bcrypt = require('bcryptjs')
+const mongoose = require('mongoose')
 const { body, param } = require('express-validator')
 const User = require('../models/User')
+const Retirada = require('../models/Retirada')
+const QuitacaoFolha = require('../models/QuitacaoFolha')
 const Log = require('../models/Log')
 const { protect, authorize } = require('../middleware/auth.middleware')
 const validate = require('../middleware/validate.middleware')
+
+// Um colaborador só pode ser desativado se não tiver saldo de retiradas em aberto
+// (mês com retiradas cujo total não foi coberto por uma quitação de folha)
+const possuiDebitoPendente = async (userId) => {
+  const porMes = await Retirada.aggregate([
+    { $match: { colaborador: new mongoose.Types.ObjectId(userId) } },
+    { $group: { _id: '$mes', total: { $sum: '$total' } } },
+  ])
+  if (!porMes.length) return false
+  const quitacoes = await QuitacaoFolha.find({ colaborador: userId, mes: { $in: porMes.map(p => p._id) } })
+  const quitadoPorMes = new Map(quitacoes.map(q => [q.mes, q.total]))
+  return porMes.some(p => (quitadoPorMes.get(p._id) || 0) < p.total - 0.01)
+}
 
 router.use(protect)
 
@@ -136,6 +152,13 @@ router.put('/:id', authorize('admin', 'gerente'), validarAtualizar, validate, as
     const errosEnd = validarEndereco(body)
     if (errosEnd.length) return res.status(400).json({ mensagem: errosEnd[0] })
 
+    if (body.ativo === false) {
+      const usuarioAtual = await User.findById(req.params.id).select('ativo nome')
+      if (usuarioAtual?.ativo && await possuiDebitoPendente(req.params.id)) {
+        return res.status(400).json({ mensagem: `${usuarioAtual.nome} tem retiradas não quitadas na folha — quite a conta antes de desativar` })
+      }
+    }
+
     const update = {}
     for (const campo of CAMPOS_EDITAVEIS) {
       if (body[campo] !== undefined) update[campo] = body[campo]
@@ -207,6 +230,11 @@ router.delete('/:id', authorize('admin', 'gerente'), validarId, validate, async 
   try {
     if (req.params.id === req.user._id.toString())
       return res.status(400).json({ mensagem: 'Você não pode desativar sua própria conta' })
+    const usuarioAtual = await User.findById(req.params.id).select('nome')
+    if (!usuarioAtual) return res.status(404).json({ mensagem: 'Usuário não encontrado' })
+    if (await possuiDebitoPendente(req.params.id)) {
+      return res.status(400).json({ mensagem: `${usuarioAtual.nome} tem retiradas não quitadas na folha — quite a conta antes de desativar` })
+    }
     const user = await User.findByIdAndUpdate(
       req.params.id,
       { ativo: false },

@@ -10,6 +10,7 @@ const Log = require('../models/Log')
 const Configuracao = require('../models/Configuracao')
 const Cliente = require('../models/Cliente')
 const Retirada = require('../models/Retirada')
+const { incrementosPorForma } = require('../utils/caixaPagamento')
 
 // Formas aceitas quando a loja devolve dinheiro ao cliente (diferença negativa) —
 // boleto/colaborador/misto não fazem sentido para uma devolução
@@ -220,6 +221,12 @@ const registrar = async (req, res) => {
       })
     }
 
+    // Além de totalTrocas (usado no saldo geral do caixa), a diferença também entra no total
+    // do método de pagamento real (dinheiro/pix/etc) — senão a conferência por forma de
+    // pagamento nunca reflete o dinheiro/pix que efetivamente entrou ou saiu numa troca
+    const incPagamentoDiferenca = diferenca !== 0
+      ? incrementosPorForma(formaPagamentoDiferenca, formasPagamentoDiferenca, Math.abs(diferenca), diferenca > 0 ? 1 : -1)
+      : {}
     await Caixa.findByIdAndUpdate(caixa._id, {
       $push: {
         trocas: {
@@ -229,7 +236,7 @@ const registrar = async (req, res) => {
           registradoPor: req.user._id
         }
       },
-      $inc: { totalTrocas: diferenca }
+      $inc: { totalTrocas: diferenca, ...incPagamentoDiferenca }
     })
 
     await Log.create({
