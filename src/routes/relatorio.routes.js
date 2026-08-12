@@ -10,6 +10,7 @@ const Retirada = require('../models/Retirada')
 const User = require('../models/User')
 const Despesa = require('../models/Despesa')
 const { protect, authorize } = require('../middleware/auth.middleware')
+const { CAMPO_FORMA } = require('../utils/caixaPagamento')
 
 router.use(protect)
 
@@ -30,12 +31,14 @@ router.get('/vendas', authorize('admin', 'gerente'), async (req, res) => {
     const comissaoAtiva = config?.comissao?.ativa ?? false
     const total = vendas.reduce((acc, v) => acc + v.total, 0)
     // Pagamento misto não entra inteiro num balde "misto" — cada parcela soma no método
-    // real (dinheiro/pix/etc), pra bater com o fechamento de caixa por forma de pagamento
+    // real (dinheiro/pix/etc), pra bater com o fechamento de caixa por forma de pagamento.
+    // Usa o mesmo CAMPO_FORMA de utils/caixaPagamento.js pra decidir método válido, senão esse
+    // relatório e o fechamento de caixa podem discordar sobre onde um método desconhecido cai
     const porForma = {}
     for (const v of vendas) {
       if (v.formaPagamento === 'misto' && v.formasPagamento?.length) {
         for (const fp of v.formasPagamento) {
-          const metodo = fp.metodo || 'misto'
+          const metodo = CAMPO_FORMA[fp.metodo] ? fp.metodo : 'misto'
           porForma[metodo] = (porForma[metodo] || 0) + (fp.valor || 0)
         }
       } else {

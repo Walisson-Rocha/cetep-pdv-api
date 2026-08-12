@@ -35,7 +35,7 @@ function buildItem(item, idx, config) {
   const vBruto = Number(fmt2(qty * vUnit))
 
   // ICMS Simples Nacional — CSOSN 400 (não tributado)
-  let icmsXml = ''
+  let icmsXml
   if (['102','400','500','900'].includes(csosn)) {
     icmsXml = `<ICMSSN400><orig>${orig}</orig><CSOSN>${csosn}</CSOSN></ICMSSN400>`
   } else {

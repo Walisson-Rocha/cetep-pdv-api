@@ -9,10 +9,12 @@ const FORMAS_PAGAMENTO = ['dinheiro', 'pix', 'debito', 'credito', 'fiado', 'bole
 
 const validarRegistrar = [
   body('vendaId').isMongoId().withMessage('Venda inválida'),
-  body('itemIndex').isInt({ min: 0 }).withMessage('Item da venda inválido'),
-  body('quantidadeTroca').isFloat({ gt: 0 }).withMessage('Quantidade a trocar inválida'),
-  body('produtoNovoId').isMongoId().withMessage('Produto novo inválido'),
-  body('quantidadeNova').isFloat({ gt: 0 }).withMessage('Quantidade do produto novo inválida'),
+  body('itens').isArray({ min: 1 }).withMessage('Selecione ao menos um item pra trocar'),
+  body('itens.*.itemIndex').isInt({ min: 0 }).withMessage('Item da venda inválido'),
+  body('itens.*.quantidade').isFloat({ gt: 0 }).withMessage('Quantidade a trocar inválida'),
+  body('itensNovos').isArray({ min: 1 }).withMessage('Selecione ao menos um produto novo'),
+  body('itensNovos.*.produtoId').isMongoId().withMessage('Produto novo inválido'),
+  body('itensNovos.*.quantidade').isFloat({ gt: 0 }).withMessage('Quantidade do produto novo inválida'),
   body('formaPagamentoDiferenca').optional({ nullable: true }).isIn(FORMAS_PAGAMENTO).withMessage('Forma de pagamento inválida'),
   body('formasPagamentoDiferenca').optional().isArray().withMessage('Pagamento misto inválido'),
   body('clienteId').optional({ nullable: true }).isMongoId().withMessage('Cliente inválido'),

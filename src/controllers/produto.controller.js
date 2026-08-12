@@ -138,9 +138,11 @@ const buscarPorId = async (req, res) => {
   }
 }
 
-// Combo não pode conter outro combo como componente — evita ter que suportar composição recursiva
-const validarComponentesNaoCombo = async (body) => {
-  if (body.tipo !== 'combo' || !Array.isArray(body.componentes) || !body.componentes.length) return null
+// Combo não pode conter outro combo como componente — evita ter que suportar composição recursiva.
+// tipoAtual cobre updates parciais que mexem em componentes sem reenviar tipo (o produto já é combo no banco)
+const validarComponentesNaoCombo = async (body, tipoAtual) => {
+  const tipo = body.tipo !== undefined ? body.tipo : tipoAtual
+  if (tipo !== 'combo' || !Array.isArray(body.componentes) || !body.componentes.length) return null
   const idsComponentes = body.componentes.map(c => c.produto).filter(Boolean)
   const combosAninhados = await Produto.find({ _id: { $in: idsComponentes }, tipo: 'combo' }).select('nome')
   if (!combosAninhados.length) return null
@@ -174,7 +176,7 @@ const atualizar = async (req, res) => {
   try {
     const produtoAntes = await Produto.findById(req.params.id)
     if (!produtoAntes) return res.status(404).json({ mensagem: 'Produto não encontrado' })
-    const erroCombo = await validarComponentesNaoCombo(req.body)
+    const erroCombo = await validarComponentesNaoCombo(req.body, produtoAntes.tipo)
     if (erroCombo) return res.status(400).json({ mensagem: erroCombo })
     const precoVendaMudou = req.body.precoVenda !== undefined && parseFloat(req.body.precoVenda) !== produtoAntes.precoVenda
     const precoCustoMudou = req.body.precoCusto !== undefined && parseFloat(req.body.precoCusto) !== produtoAntes.precoCusto

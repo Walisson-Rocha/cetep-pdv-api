@@ -32,6 +32,12 @@ const registrar = async (req, res) => {
     if (idsComponentes.length) {
       const componentesReais = await Produto.find({ _id: { $in: idsComponentes } })
       for (const cp of componentesReais) produtoMap.set(cp._id.toString(), cp)
+      // Componente referenciado pelo kit mas que não existe mais (produto excluído) — bloqueia
+      // sempre, independente de estoqueNegativo, senão a baixa de estoque quebra depois do Venda.create
+      const idComponenteFaltando = idsComponentes.find(id => !produtoMap.has(id))
+      if (idComponenteFaltando) {
+        return res.status(400).json({ mensagem: 'Um dos kits selecionados tem um componente que não existe mais. Edite o kit em Estoque antes de vender.' })
+      }
     }
     for (const item of itens) {
       const produto = produtoMap.get(item.produtoId)
@@ -102,8 +108,12 @@ const registrar = async (req, res) => {
       }
       for (const [compId, necessario] of necessidades) {
         const compReal = produtoMap.get(compId)
-        const jaDireto = itensCompletos.find(i => i.produto.toString() === compId)
-        const totalNecessario = necessario + (jaDireto ? jaDireto.quantidade : 0)
+        // Soma TODAS as linhas do carrinho que vendem esse produto direto (não só a primeira),
+        // senão duas linhas do mesmo produto não-combo fariam a demanda real ser subestimada
+        const jaDireto = itensCompletos
+          .filter(i => i.produto.toString() === compId)
+          .reduce((s, i) => s + i.quantidade, 0)
+        const totalNecessario = necessario + jaDireto
         if (!compReal || compReal.estoque < totalNecessario) {
           return res.status(400).json({
             mensagem: `Estoque insuficiente de "${compReal?.nome || compId}" para completar o(s) kit(s) selecionado(s)`,
@@ -119,6 +129,15 @@ const registrar = async (req, res) => {
       })
     }
     const total = Math.max(0, subtotal - desconto)
+
+    // Pagamento misto precisa somar exatamente o total — senão os totais por método no caixa
+    // (dinheiro/pix/etc, feitos a partir de formasPagamento) ficam dessincronizados do total real
+    if (formaPagamento === 'misto') {
+      const somaMisto = formasPagamento.reduce((s, p) => s + (Number(p.valor) || 0), 0)
+      if (!formasPagamento.length || Math.abs(somaMisto - total) > 0.01) {
+        return res.status(400).json({ mensagem: 'As formas de pagamento misto devem somar exatamente o total da venda' })
+      }
+    }
 
     // Limite de desconto por perfil — só entra em vigor depois que o admin configurar pelo menos uma vez
     if (config?.limitesDesconto && valorCatalogoTotal > 0) {

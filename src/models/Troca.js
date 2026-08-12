@@ -8,11 +8,19 @@ const itemTrocaSchema = new mongoose.Schema({
   subtotal: { type: Number, required: true }
 }, { _id: false })
 
+const itemOrigemTrocaSchema = new mongoose.Schema({
+  itemIndex: { type: Number, required: true },
+  produto: { type: mongoose.Schema.Types.ObjectId, ref: 'Produto', required: true },
+  nomeProduto: { type: String, required: true },
+  quantidade: { type: Number, required: true, min: 0.001 },
+  precoUnitario: { type: Number, required: true },
+  subtotal: { type: Number, required: true }
+}, { _id: false })
+
 const trocaSchema = new mongoose.Schema({
   vendaOrigem: { type: mongoose.Schema.Types.ObjectId, ref: 'Venda', required: true },
-  itemIndex: { type: Number, required: true },
-  itemOrigem: { type: itemTrocaSchema, required: true },
-  itemNovo: { type: itemTrocaSchema, required: true },
+  itensOrigem: { type: [itemOrigemTrocaSchema], required: true, validate: v => v.length > 0 },
+  itensNovos: { type: [itemTrocaSchema], required: true, validate: v => v.length > 0 },
   valorAntigo: { type: Number, required: true },
   valorNovo: { type: Number, required: true },
   diferenca: { type: Number, required: true },

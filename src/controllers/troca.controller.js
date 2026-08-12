@@ -17,11 +17,27 @@ const { incrementosPorForma } = require('../utils/caixaPagamento')
 const FORMAS_DEVOLUCAO = ['dinheiro', 'pix', 'debito', 'credito', 'fiado']
 const FORMAS_MISTO = ['dinheiro', 'pix', 'debito', 'credito', 'fiado', 'boleto']
 
+// Trocas registradas antes da troca multi-item (um item de cada lado só) não têm itensOrigem/
+// itensNovos no banco — sintetiza a partir dos campos antigos pra não perder esse histórico
+// (senão o item de uma troca antiga parece nunca ter sido trocado, permitindo trocar de novo).
+// Só funciona em documentos "lean" (plain object), já que os campos antigos não existem mais
+// no schema e o Mongoose descarta paths fora do schema ao hidratar um Document normal.
+const normalizarTroca = (t) => {
+  if (t.itensOrigem?.length || t.itensNovos?.length) return t
+  return {
+    ...t,
+    itensOrigem: t.itemOrigem ? [{
+      itemIndex: t.itemIndex, produto: t.itemOrigem.produto, nomeProduto: t.itemOrigem.nomeProduto,
+      quantidade: t.itemOrigem.quantidade, precoUnitario: t.itemOrigem.precoUnitario, subtotal: t.itemOrigem.subtotal,
+    }] : [],
+    itensNovos: t.itemNovo ? [t.itemNovo] : [],
+  }
+}
+
 const registrar = async (req, res) => {
   try {
     const {
-      vendaId, itemIndex, quantidadeTroca,
-      produtoNovoId, quantidadeNova, precoUnitarioNovo,
+      vendaId, itens, itensNovos,
       formaPagamentoDiferenca, formasPagamentoDiferenca = [],
       clienteId, colaboradorId, motivo = ''
     } = req.body
@@ -33,50 +49,144 @@ const registrar = async (req, res) => {
     if (!venda) return res.status(404).json({ mensagem: 'Venda não encontrada' })
     if (venda.cancelada) return res.status(400).json({ mensagem: 'Não é possível trocar itens de uma venda cancelada' })
 
-    const itemOrigem = venda.itens[itemIndex]
-    if (!itemOrigem) return res.status(400).json({ mensagem: 'Item da venda não encontrado' })
+    // Agrega por itemIndex (por segurança, caso o mesmo índice venha duplicado)
+    const itensAgregados = new Map()
+    for (const it of itens) {
+      itensAgregados.set(it.itemIndex, (itensAgregados.get(it.itemIndex) || 0) + it.quantidade)
+    }
 
-    const trocasAnteriores = await Troca.find({ vendaOrigem: venda._id, itemIndex })
-    const jaTrocado = trocasAnteriores.reduce((acc, t) => acc + t.itemOrigem.quantidade, 0)
-    if (jaTrocado + quantidadeTroca > itemOrigem.quantidade) {
-      return res.status(400).json({
-        mensagem: `Quantidade indisponível para troca. Comprado: ${itemOrigem.quantidade}, já trocado: ${jaTrocado}`
+    // Quanto já foi trocado de cada item dessa venda, olhando todas as trocas anteriores
+    // (.lean() pra conseguir ler o formato antigo de trocas registradas antes da troca multi-item)
+    const trocasAnteriores = await Troca.find({ vendaOrigem: venda._id }).lean()
+    const jaTrocadoPorIndex = new Map()
+    for (const tRaw of trocasAnteriores) {
+      const t = normalizarTroca(tRaw)
+      for (const io of t.itensOrigem) {
+        jaTrocadoPorIndex.set(io.itemIndex, (jaTrocadoPorIndex.get(io.itemIndex) || 0) + io.quantidade)
+      }
+    }
+
+    const itensOrigemCompletos = []
+    let valorAntigo = 0
+    for (const [idx, quantidade] of itensAgregados) {
+      const itemOrigem = venda.itens[idx]
+      if (!itemOrigem) return res.status(400).json({ mensagem: `Item da venda não encontrado (índice ${idx})` })
+      const jaTrocado = jaTrocadoPorIndex.get(idx) || 0
+      if (jaTrocado + quantidade > itemOrigem.quantidade) {
+        return res.status(400).json({
+          mensagem: `Quantidade indisponível para troca de "${itemOrigem.nomeProduto}". Comprado: ${itemOrigem.quantidade}, já trocado: ${jaTrocado}`
+        })
+      }
+      const valorUnitarioAntigo = itemOrigem.subtotal / itemOrigem.quantidade
+      const subtotal = Math.round(valorUnitarioAntigo * quantidade * 100) / 100
+      valorAntigo += subtotal
+      itensOrigemCompletos.push({
+        itemIndex: idx,
+        produto: itemOrigem.produto,
+        nomeProduto: itemOrigem.nomeProduto,
+        quantidade,
+        precoUnitario: valorUnitarioAntigo,
+        subtotal,
       })
     }
-
-    const produtoOrigem = await Produto.findById(itemOrigem.produto)
-    const produtoNovo = await Produto.findById(produtoNovoId)
-    if (!produtoNovo || !produtoNovo.ativo) {
-      return res.status(400).json({ mensagem: 'Produto novo não encontrado' })
-    }
+    valorAntigo = Math.round(valorAntigo * 100) / 100
 
     const config = await Configuracao.findOne().lean()
     const permitirEstoqueNegativo = config?.estoqueNegativo ?? false
-    if (!permitirEstoqueNegativo && produtoNovo.estoque < quantidadeNova) {
-      return res.status(400).json({
-        mensagem: `Estoque insuficiente para ${produtoNovo.nome}`,
-        estoqueDisponivel: produtoNovo.estoque,
-        solicitado: quantidadeNova
-      })
+
+    // Agrega quantidade por produto (caso o mesmo produto apareça mais de uma vez na lista)
+    const novosAgregados = new Map()
+    for (const it of itensNovos) {
+      const atual = novosAgregados.get(it.produtoId) || { quantidade: 0, precoUnitarioNovo: it.precoUnitarioNovo }
+      atual.quantidade += it.quantidade
+      novosAgregados.set(it.produtoId, atual)
     }
 
-    let precoNovo = produtoNovo.precoVenda
-    if (produtoNovo.precoAtacado > 0 && produtoNovo.quantidadeAtacado > 0 && quantidadeNova >= produtoNovo.quantidadeAtacado) {
-      precoNovo = produtoNovo.precoAtacado
-    }
-    if (precoUnitarioNovo && precoUnitarioNovo > 0) {
-      const precoCusto = produtoNovo.precoCusto || 0
-      if (precoCusto > 0 && precoUnitarioNovo < precoCusto) {
+    const produtosNovosMap = new Map()
+    const itensNovosCompletos = []
+    let valorNovo = 0
+    for (const [produtoId, { quantidade, precoUnitarioNovo }] of novosAgregados) {
+      const produtoNovo = await Produto.findById(produtoId)
+      if (!produtoNovo || !produtoNovo.ativo) {
+        return res.status(400).json({ mensagem: 'Produto novo não encontrado' })
+      }
+      if (produtoNovo.tipo === 'combo' && !produtoNovo.componentes?.length) {
+        return res.status(400).json({ mensagem: `Kit "${produtoNovo.nome}" não tem componentes cadastrados` })
+      }
+      // Combo/kit não tem estoque próprio — a checagem real é feita mais abaixo, em cima dos componentes
+      if (produtoNovo.tipo !== 'combo' && !permitirEstoqueNegativo && produtoNovo.estoque < quantidade) {
         return res.status(400).json({
-          mensagem: `Preço de venda (R$${precoUnitarioNovo.toFixed(2)}) não pode ser inferior ao custo (R$${precoCusto.toFixed(2)}) para ${produtoNovo.nome}`
+          mensagem: `Estoque insuficiente para ${produtoNovo.nome}`,
+          estoqueDisponivel: produtoNovo.estoque,
+          solicitado: quantidade
         })
       }
-      precoNovo = precoUnitarioNovo
+      let precoNovo = produtoNovo.precoVenda
+      if (produtoNovo.precoAtacado > 0 && produtoNovo.quantidadeAtacado > 0 && quantidade >= produtoNovo.quantidadeAtacado) {
+        precoNovo = produtoNovo.precoAtacado
+      }
+      if (precoUnitarioNovo && precoUnitarioNovo > 0) {
+        const precoCusto = produtoNovo.precoCusto || 0
+        if (precoCusto > 0 && precoUnitarioNovo < precoCusto) {
+          return res.status(400).json({
+            mensagem: `Preço de venda (R$${precoUnitarioNovo.toFixed(2)}) não pode ser inferior ao custo (R$${precoCusto.toFixed(2)}) para ${produtoNovo.nome}`
+          })
+        }
+        precoNovo = precoUnitarioNovo
+      }
+      const subtotal = Math.round(precoNovo * quantidade * 100) / 100
+      valorNovo += subtotal
+      produtosNovosMap.set(produtoId, produtoNovo)
+      itensNovosCompletos.push({
+        produto: produtoNovo._id,
+        nomeProduto: produtoNovo.nome,
+        quantidade,
+        precoUnitario: precoNovo,
+        subtotal,
+      })
+    }
+    valorNovo = Math.round(valorNovo * 100) / 100
+
+    // Combo/kit entre os produtos novos não tem estoque próprio — a baixa e a checagem são
+    // feitas em cima dos componentes reais, igual venda.controller.js faz na venda normal
+    const idsComponentesNovos = [...produtosNovosMap.values()]
+      .filter(p => p.tipo === 'combo')
+      .flatMap(p => p.componentes.map(c => c.produto.toString()))
+    const componentesNovosMap = new Map()
+    if (idsComponentesNovos.length) {
+      const componentesReais = await Produto.find({ _id: { $in: idsComponentesNovos } })
+      for (const cp of componentesReais) componentesNovosMap.set(cp._id.toString(), cp)
+      const idComponenteFaltando = idsComponentesNovos.find(id => !componentesNovosMap.has(id))
+      if (idComponenteFaltando) {
+        return res.status(400).json({ mensagem: 'Um dos kits selecionados tem um componente que não existe mais. Edite o kit em Estoque antes de trocar.' })
+      }
+    }
+    if (!permitirEstoqueNegativo) {
+      // Soma a necessidade de cada componente por todos os kits selecionados de uma vez, pra não
+      // deixar dois kits que compartilham um componente passarem cada um isolado e estourar juntos
+      const necessidadesNovos = new Map()
+      for (const [produtoId, { quantidade }] of novosAgregados) {
+        const p = produtosNovosMap.get(produtoId)
+        if (p.tipo !== 'combo') continue
+        for (const c of p.componentes) {
+          const key = c.produto.toString()
+          necessidadesNovos.set(key, (necessidadesNovos.get(key) || 0) + c.quantidade * quantidade)
+        }
+      }
+      for (const [compId, necessario] of necessidadesNovos) {
+        const compReal = componentesNovosMap.get(compId)
+        const jaDireto = novosAgregados.get(compId)?.quantidade || 0
+        const totalNecessario = necessario + jaDireto
+        if (!compReal || compReal.estoque < totalNecessario) {
+          return res.status(400).json({
+            mensagem: `Estoque insuficiente de "${compReal?.nome || compId}" para completar o(s) kit(s) selecionado(s)`,
+            estoqueDisponivel: compReal?.estoque ?? 0,
+            solicitado: totalNecessario
+          })
+        }
+      }
     }
 
-    const valorUnitarioAntigo = itemOrigem.subtotal / itemOrigem.quantidade
-    const valorAntigo = Math.round(valorUnitarioAntigo * quantidadeTroca * 100) / 100
-    const valorNovo = Math.round(precoNovo * quantidadeNova * 100) / 100
     const diferenca = Math.round((valorNovo - valorAntigo) * 100) / 100
 
     if (diferenca !== 0 && !formaPagamentoDiferenca) {
@@ -124,61 +234,85 @@ const registrar = async (req, res) => {
       }
     }
 
-    // Devolve estoque do produto antigo
-    if (produtoOrigem) {
+    // Devolve estoque de cada item de origem — kit/combo devolve pros componentes reais
+    // (o produto-combo em si nunca recebe baixa/estorno, é puramente virtual)
+    for (const io of itensOrigemCompletos) {
+      const produtoOrigem = await Produto.findById(io.produto)
+      if (!produtoOrigem) continue
+      if (produtoOrigem.tipo === 'combo') {
+        for (const c of produtoOrigem.componentes || []) {
+          const compReal = await Produto.findById(c.produto)
+          if (!compReal) continue
+          const qtd = c.quantidade * io.quantidade
+          const estoqueAnterior = compReal.estoque
+          const estoqueAtual = compReal.estoque + qtd
+          await Produto.findByIdAndUpdate(compReal._id, { $inc: { estoque: qtd } })
+          await MovimentoEstoque.create({
+            produto: compReal._id, tipo: 'entrada',
+            quantidade: qtd,
+            estoqueAnterior, estoqueAtual,
+            motivo: `Troca item venda #${venda.numero} (kit: ${produtoOrigem.nome})`,
+            venda: venda._id, responsavel: req.user._id
+          })
+        }
+        continue
+      }
       const estoqueAnterior = produtoOrigem.estoque
-      const estoqueAtual = produtoOrigem.estoque + quantidadeTroca
-      await Produto.findByIdAndUpdate(produtoOrigem._id, { $inc: { estoque: quantidadeTroca } })
+      const estoqueAtual = produtoOrigem.estoque + io.quantidade
+      await Produto.findByIdAndUpdate(produtoOrigem._id, { $inc: { estoque: io.quantidade } })
       await MovimentoEstoque.create({
         produto: produtoOrigem._id, tipo: 'entrada',
-        quantidade: quantidadeTroca,
+        quantidade: io.quantidade,
         estoqueAnterior, estoqueAtual,
         motivo: `Troca item venda #${venda.numero}`,
         venda: venda._id, responsavel: req.user._id
       })
     }
 
-    // Debita estoque do produto novo
-    const estoqueAnteriorNovo = produtoNovo.estoque
-    const estoqueAtualNovo = produtoNovo.estoque - quantidadeNova
-    await Produto.findByIdAndUpdate(produtoNovo._id, { $inc: { estoque: -quantidadeNova } })
-    await MovimentoEstoque.create({
-      produto: produtoNovo._id, tipo: 'saida',
-      quantidade: quantidadeNova,
-      estoqueAnterior: estoqueAnteriorNovo, estoqueAtual: estoqueAtualNovo,
-      motivo: `Troca item venda #${venda.numero}`,
-      venda: venda._id, responsavel: req.user._id
-    })
-    const lotes = await Lote.find({ produto: produtoNovo._id, ativo: true, quantidade: { $gt: 0 } }).sort({ dataValidade: 1 })
-    if (lotes.length > 0) {
-      let restante = quantidadeNova
-      for (const lote of lotes) {
-        if (restante <= 0) break
-        const deduzir = Math.min(lote.quantidade, restante)
-        lote.quantidade -= deduzir
-        if (lote.quantidade === 0) lote.ativo = false
-        await lote.save()
-        restante -= deduzir
+    // Debita estoque de cada item novo — achata em linhas sobre produtos reais, expandindo
+    // kit/combo pros seus componentes (mesmo princípio de venda.controller.js na venda normal)
+    const linhasDebito = []
+    for (const inv of itensNovosCompletos) {
+      const produtoNovo = produtosNovosMap.get(inv.produto.toString())
+      if (produtoNovo.tipo === 'combo') {
+        for (const c of produtoNovo.componentes) {
+          linhasDebito.push({ produto: componentesNovosMap.get(c.produto.toString()), quantidade: c.quantidade * inv.quantidade, kitNome: produtoNovo.nome })
+        }
+      } else {
+        linhasDebito.push({ produto: produtoNovo, quantidade: inv.quantidade, kitNome: null })
+      }
+    }
+    for (const linha of linhasDebito) {
+      const produto = linha.produto
+      const estoqueAnteriorNovo = produto.estoque
+      const estoqueAtualNovo = produto.estoque - linha.quantidade
+      produto.estoque = estoqueAtualNovo
+      await Produto.findByIdAndUpdate(produto._id, { $inc: { estoque: -linha.quantidade } })
+      await MovimentoEstoque.create({
+        produto: produto._id, tipo: 'saida',
+        quantidade: linha.quantidade,
+        estoqueAnterior: estoqueAnteriorNovo, estoqueAtual: estoqueAtualNovo,
+        motivo: linha.kitNome ? `Troca item venda #${venda.numero} (kit: ${linha.kitNome})` : `Troca item venda #${venda.numero}`,
+        venda: venda._id, responsavel: req.user._id
+      })
+      const lotes = await Lote.find({ produto: produto._id, ativo: true, quantidade: { $gt: 0 } }).sort({ dataValidade: 1 })
+      if (lotes.length > 0) {
+        let restante = linha.quantidade
+        for (const lote of lotes) {
+          if (restante <= 0) break
+          const deduzir = Math.min(lote.quantidade, restante)
+          lote.quantidade -= deduzir
+          if (lote.quantidade === 0) lote.ativo = false
+          await lote.save()
+          restante -= deduzir
+        }
       }
     }
 
     const troca = await Troca.create({
       vendaOrigem: venda._id,
-      itemIndex,
-      itemOrigem: {
-        produto: itemOrigem.produto,
-        nomeProduto: itemOrigem.nomeProduto,
-        quantidade: quantidadeTroca,
-        precoUnitario: valorUnitarioAntigo,
-        subtotal: valorAntigo
-      },
-      itemNovo: {
-        produto: produtoNovo._id,
-        nomeProduto: produtoNovo.nome,
-        quantidade: quantidadeNova,
-        precoUnitario: precoNovo,
-        subtotal: valorNovo
-      },
+      itensOrigem: itensOrigemCompletos,
+      itensNovos: itensNovosCompletos,
       valorAntigo,
       valorNovo,
       diferenca,
@@ -207,7 +341,7 @@ const registrar = async (req, res) => {
       await Retirada.create({
         colaborador: colaboradorId,
         itens: [{
-          produto: produtoNovo._id,
+          produto: itensNovosCompletos[0].produto,
           nomeProduto: `Diferença troca venda #${venda.numero}`,
           quantidade: 1,
           precoUnitario: diferenca,
@@ -242,7 +376,7 @@ const registrar = async (req, res) => {
     await Log.create({
       usuario: req.user._id, nomeUsuario: req.user.nome,
       acao: 'troca_realizada',
-      detalhes: `Troca na venda #${venda.numero}: ${itemOrigem.nomeProduto} → ${produtoNovo.nome} (diferença R$${diferenca.toFixed(2)})`,
+      detalhes: `Troca na venda #${venda.numero}: ${itensOrigemCompletos.map(i => `${i.quantidade}x ${i.nomeProduto}`).join(', ')} → ${itensNovosCompletos.map(i => `${i.quantidade}x ${i.nomeProduto}`).join(', ')} (diferença R$${diferenca.toFixed(2)})`,
       referencia: troca._id
     })
 
@@ -288,8 +422,9 @@ const listar = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)
+      .lean()
     const total = await Troca.countDocuments(filtro)
-    res.json({ trocas, total, paginas: Math.ceil(total / limit) })
+    res.json({ trocas: trocas.map(normalizarTroca), total, paginas: Math.ceil(total / limit) })
   } catch (error) {
     logger.error('Erro ao listar trocas:', error)
     res.status(500).json({ mensagem: 'Erro ao listar trocas' })
