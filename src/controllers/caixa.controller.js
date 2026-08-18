@@ -8,6 +8,9 @@ const abrirCaixa = async (req, res) => {
     const caixaAberto = await Caixa.findOne({ status: 'aberto' })
     if (caixaAberto) return res.status(400).json({ mensagem: 'Já existe um caixa aberto. Feche-o antes de abrir um novo.' })
     const { saldoInicial = 0 } = req.body
+    if (typeof saldoInicial !== 'number' || !Number.isFinite(saldoInicial) || saldoInicial < 0) {
+      return res.status(400).json({ mensagem: 'Saldo inicial inválido' })
+    }
     const caixa = await Caixa.create({ abertoPor: req.user._id, saldoInicial })
     await Log.create({
       usuario: req.user._id, nomeUsuario: req.user.nome,
@@ -18,6 +21,11 @@ const abrirCaixa = async (req, res) => {
     socket.emit('caixa:aberto', { abertoPor: req.user.nome, saldoInicial })
     res.status(201).json({ caixa, mensagem: 'Caixa aberto com sucesso' })
   } catch (error) {
+    // Índice único parcial em {status:'aberto'} barra abertura dupla concorrente
+    // (dois cliques/terminais) que a checagem findOne acima sozinha não pega.
+    if (error.code === 11000) {
+      return res.status(400).json({ mensagem: 'Já existe um caixa aberto. Feche-o antes de abrir um novo.' })
+    }
     logger.error('Erro ao abrir caixa:', error)
     res.status(500).json({ mensagem: 'Erro ao abrir caixa' })
   }
@@ -29,7 +37,11 @@ const fecharCaixa = async (req, res) => {
     const caixa = await Caixa.findOne({ _id: req.params.id, status: 'aberto' })
     if (!caixa) return res.status(400).json({ mensagem: 'Caixa não encontrado ou já fechado' })
     const totalSangrias = caixa.sangrias.reduce((acc, s) => acc + s.valor, 0)
-    const saldoFinal = caixa.saldoInicial + caixa.totalVendas - totalSangrias
+    // saldoFinal é o dinheiro físico esperado na gaveta — só entra o que foi
+    // recebido em espécie (totalDinheiro já inclui a parte em dinheiro de pagamentos
+    // mistos). Usar totalVendas aqui contava pix/débito/crédito/fiado como se
+    // fossem dinheiro e deixava a diferença de caixa sempre errada.
+    const saldoFinal = caixa.saldoInicial + caixa.totalDinheiro - totalSangrias
     const diferenca = saldoContado - saldoFinal
     caixa.status = 'fechado'
     caixa.fechadoEm = new Date()
@@ -55,6 +67,9 @@ const fecharCaixa = async (req, res) => {
 const registrarSangria = async (req, res) => {
   try {
     const { valor, motivo } = req.body
+    if (typeof valor !== 'number' || !Number.isFinite(valor) || valor <= 0) {
+      return res.status(400).json({ mensagem: 'Valor da sangria inválido' })
+    }
     const caixa = await Caixa.findOne({ status: 'aberto' })
     if (!caixa) return res.status(400).json({ mensagem: 'Não há caixa aberto para registrar sangria' })
     caixa.sangrias.push({ valor, motivo, registradoPor: req.user._id })

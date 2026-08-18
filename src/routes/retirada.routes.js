@@ -1,4 +1,5 @@
 const logger = require('../config/logger')
+const mongoose = require('mongoose')
 const express = require('express')
 const router = express.Router()
 const Retirada = require('../models/Retirada')
@@ -107,62 +108,83 @@ router.get('/folha', async (req, res) => {
 
 // POST /retiradas
 router.post('/', async (req, res) => {
+  const { colaboradorId, itens, observacao } = req.body
+  if (!colaboradorId || !itens || itens.length === 0)
+    return res.status(400).json({ mensagem: 'Colaborador e itens são obrigatórios' })
+  if (itens.length > 50)
+    return res.status(400).json({ mensagem: 'Máximo de 50 itens por retirada' })
+
+  const session = await mongoose.startSession()
+  let retirada, colaboradorNome, total
   try {
-    const { colaboradorId, itens, observacao } = req.body
-    if (!colaboradorId || !itens || itens.length === 0)
-      return res.status(400).json({ mensagem: 'Colaborador e itens são obrigatórios' })
-    if (itens.length > 50)
-      return res.status(400).json({ mensagem: 'Máximo de 50 itens por retirada' })
+    // Valida todos os itens (com quantidade agregada por produto) ANTES de decrementar
+    // qualquer estoque, e faz tudo dentro de uma transação — se um item no meio da
+    // lista falhar, nada do que já foi checado antes chega a ser descontado de verdade.
+    await session.withTransaction(async () => {
+      const colaborador = await User.findById(colaboradorId).session(session)
+      if (!colaborador || colaborador.perfil === 'admin' || !colaborador.ativo)
+        throw new Error('Usuário inválido para retirada')
+      colaboradorNome = colaborador.nome
 
-    const colaborador = await User.findById(colaboradorId)
-    if (!colaborador || colaborador.perfil === 'admin' || !colaborador.ativo)
-      return res.status(400).json({ mensagem: 'Usuário inválido para retirada' })
+      const quantidadeTotalPorProduto = new Map()
+      for (const item of itens) {
+        quantidadeTotalPorProduto.set(item.produtoId, (quantidadeTotalPorProduto.get(item.produtoId) || 0) + item.quantidade)
+      }
 
-    // Valida e desconta estoque
-    let total = 0
-    const itensFormatados = []
-    for (const item of itens) {
-      const produto = await Produto.findById(item.produtoId)
-      if (!produto) return res.status(400).json({ mensagem: `Produto não encontrado: ${item.produtoId}` })
-      if (produto.estoque < item.quantidade)
-        return res.status(400).json({ mensagem: `Estoque insuficiente: ${produto.nome} (disponível: ${produto.estoque})` })
+      total = 0
+      const itensFormatados = []
+      for (const item of itens) {
+        const produto = await Produto.findById(item.produtoId).session(session)
+        if (!produto) throw new Error(`Produto não encontrado: ${item.produtoId}`)
+        const quantidadeTotalPedida = quantidadeTotalPorProduto.get(item.produtoId)
+        if (produto.estoque < quantidadeTotalPedida)
+          throw new Error(`Estoque insuficiente: ${produto.nome} (disponível: ${produto.estoque})`)
 
-      const subtotal = produto.precoVenda * item.quantidade
-      total += subtotal
-      itensFormatados.push({
-        produto: produto._id,
-        nomeProduto: produto.nome,
-        quantidade: item.quantidade,
-        precoUnitario: produto.precoVenda,
-        subtotal,
-      })
-      await Produto.findByIdAndUpdate(produto._id, { $inc: { estoque: -item.quantidade } })
-    }
+        const subtotal = produto.precoVenda * item.quantidade
+        total += subtotal
+        itensFormatados.push({
+          produto: produto._id,
+          nomeProduto: produto.nome,
+          quantidade: item.quantidade,
+          precoUnitario: produto.precoVenda,
+          subtotal,
+        })
+      }
+      for (const item of itensFormatados) {
+        await Produto.findByIdAndUpdate(item.produto, { $inc: { estoque: -item.quantidade } }, { session })
+      }
 
-    const agora = new Date()
-    const mes = parseInt(`${agora.getFullYear()}${String(agora.getMonth() + 1).padStart(2, '0')}`)
+      const agora = new Date()
+      const mes = parseInt(`${agora.getFullYear()}${String(agora.getMonth() + 1).padStart(2, '0')}`)
 
-    const retirada = await Retirada.create({
-      colaborador: colaboradorId,
-      itens: itensFormatados,
-      total,
-      mes,
-      observacao: observacao || '',
-      registradaPor: req.user._id,
-    })
+      const [r] = await Retirada.create([{
+        colaborador: colaboradorId,
+        itens: itensFormatados,
+        total,
+        mes,
+        observacao: observacao || '',
+        registradaPor: req.user._id,
+      }], { session })
+      retirada = r
 
-    await Log.create({
-      usuario: req.user._id,
-      nomeUsuario: req.user.nome,
-      acao: 'retirada_criada',
-      detalhes: `Retirada de ${colaborador.nome} — R$${total.toFixed(2)}`,
-      referencia: retirada._id,
+      await Log.create([{
+        usuario: req.user._id,
+        nomeUsuario: req.user.nome,
+        acao: 'retirada_criada',
+        detalhes: `Retirada de ${colaborador.nome} — R$${total.toFixed(2)}`,
+        referencia: retirada._id,
+      }], { session })
     })
 
     res.status(201).json({ retirada })
   } catch (error) {
+    if (error.message?.startsWith('Produto não encontrado') || error.message?.startsWith('Estoque insuficiente') || error.message === 'Usuário inválido para retirada') {
+      return res.status(400).json({ mensagem: error.message })
+    }
     logger.error('Erro ao criar retirada:', error)
     res.status(500).json({ mensagem: 'Erro ao registrar retirada' })
+  } finally {
+    session.endSession()
   }
 })
 
@@ -215,19 +237,25 @@ router.delete('/quitar/:colaboradorId', async (req, res) => {
 
 // DELETE /retiradas/:id — estorna e remove
 router.delete('/:id', async (req, res) => {
+  const session = await mongoose.startSession()
   try {
-    const retirada = await Retirada.findById(req.params.id)
-    if (!retirada) return res.status(404).json({ mensagem: 'Retirada não encontrada' })
+    let encontrada = true
+    await session.withTransaction(async () => {
+      const retirada = await Retirada.findById(req.params.id).session(session)
+      if (!retirada) { encontrada = false; return }
 
-    for (const item of retirada.itens) {
-      await Produto.findByIdAndUpdate(item.produto, { $inc: { estoque: item.quantidade } })
-    }
-
-    await Retirada.findByIdAndDelete(req.params.id)
+      for (const item of retirada.itens) {
+        await Produto.findByIdAndUpdate(item.produto, { $inc: { estoque: item.quantidade } }, { session })
+      }
+      await Retirada.findByIdAndDelete(req.params.id, { session })
+    })
+    if (!encontrada) return res.status(404).json({ mensagem: 'Retirada não encontrada' })
     res.json({ mensagem: 'Retirada estornada e removida' })
   } catch (error) {
     logger.error('Erro ao deletar retirada:', error)
     res.status(500).json({ mensagem: 'Erro ao remover retirada' })
+  } finally {
+    session.endSession()
   }
 })
 

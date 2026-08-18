@@ -42,18 +42,23 @@ router.get('/vendas', authorize('admin', 'gerente'), async (req, res) => {
       porVendedor[nome].total += v.total
       porVendedor[nome].quantidade++
       porVendedor[nome].comissaoValor = parseFloat((porVendedor[nome].total * comissaoPct / 100).toFixed(2))
+      // O desconto geral do carrinho (v.desconto) não é gravado por item — item.subtotal
+      // é sempre pré-desconto-geral. Sem isso, a soma por categoria fica maior que
+      // v.total (e maior que o que entra no caixa) em toda venda com desconto geral.
+      const fatorDesconto = v.subtotal > 0 ? v.total / v.subtotal : 1
       v.itens.forEach(item => {
         const cat = item.produto?.categoria
         const catNome = cat?.nome || 'Sem categoria'
+        const valorLiquido = (item.subtotal || 0) * fatorDesconto
         if (!porCategoria[catNome]) porCategoria[catNome] = { total: 0, quantidade: 0, icone: cat?.icone || '📦' }
-        porCategoria[catNome].total += item.subtotal || 0
+        porCategoria[catNome].total += valorLiquido
         porCategoria[catNome].quantidade += item.quantidade || 0
         // detalhe por produto dentro de cada categoria
         if (!porCategoriaDetalhe[catNome]) porCategoriaDetalhe[catNome] = {}
         const prodNome = item.nomeProduto || 'Produto'
         if (!porCategoriaDetalhe[catNome][prodNome]) porCategoriaDetalhe[catNome][prodNome] = { quantidade: 0, total: 0 }
         porCategoriaDetalhe[catNome][prodNome].quantidade += item.quantidade || 0
-        porCategoriaDetalhe[catNome][prodNome].total += item.subtotal || 0
+        porCategoriaDetalhe[catNome][prodNome].total += valorLiquido
       })
     })
     res.json({ total, quantidade: vendas.length, porFormaPagamento: porForma, porVendedor, porCategoria, porCategoriaDetalhe, comissaoAtiva })
@@ -154,9 +159,12 @@ router.get('/lucratividade', authorize('admin', 'gerente'), async (req, res) => 
     const porCategoria = {}
 
     vendas.forEach(v => {
+      // item.subtotal é pré-desconto-geral do carrinho — sem isso a receita fica
+      // inflada (e o lucro/margem também) em toda venda com desconto geral aplicado.
+      const fatorDesconto = v.subtotal > 0 ? v.total / v.subtotal : 1
       v.itens.forEach(item => {
         const nome = item.nomeProduto || 'Produto'
-        const receita = item.subtotal || 0
+        const receita = (item.subtotal || 0) * fatorDesconto
         const precoCusto = item.produto?.precoCusto || 0
         const custo = precoCusto * (item.quantidade || 0)
         const lucro = receita - custo
@@ -318,13 +326,15 @@ router.get('/categorias-por-vendedor', authorize('admin', 'gerente'), async (req
     vendas.forEach(v => {
       const vendNome = v.vendedor?.nome || 'Sem vendedor'
       if (!porVendedorCategoria[vendNome]) porVendedorCategoria[vendNome] = {}
+      // Mesmo ajuste do /vendas — item.subtotal é pré-desconto-geral do carrinho.
+      const fatorDesconto = v.subtotal > 0 ? v.total / v.subtotal : 1
       v.itens.forEach(item => {
         const cat = item.produto?.categoria
         const catNome = cat?.nome || 'Sem categoria'
         const catIcone = cat?.icone || '📦'
         if (!porVendedorCategoria[vendNome][catNome])
           porVendedorCategoria[vendNome][catNome] = { nome: catNome, icone: catIcone, total: 0, quantidade: 0 }
-        porVendedorCategoria[vendNome][catNome].total += item.subtotal || 0
+        porVendedorCategoria[vendNome][catNome].total += (item.subtotal || 0) * fatorDesconto
         porVendedorCategoria[vendNome][catNome].quantidade += item.quantidade || 0
       })
     })
@@ -355,11 +365,13 @@ router.get('/estoque-giro', authorize('admin', 'gerente'), async (req, res) => {
     ])
     const vendidoPorProduto = {}
     vendas.forEach(v => {
+      // item.subtotal é pré-desconto-geral do carrinho — corrige pra receita bater com o total real da venda.
+      const fatorDesconto = v.subtotal > 0 ? v.total / v.subtotal : 1
       v.itens.forEach(item => {
         const id = item.produto.toString()
         if (!vendidoPorProduto[id]) vendidoPorProduto[id] = { quantidade: 0, receita: 0 }
         vendidoPorProduto[id].quantidade += item.quantidade
-        vendidoPorProduto[id].receita += item.subtotal || 0
+        vendidoPorProduto[id].receita += (item.subtotal || 0) * fatorDesconto
       })
     })
     const resultado = produtos.map(p => {

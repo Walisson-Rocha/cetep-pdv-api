@@ -106,7 +106,24 @@ router.post('/saida', authorize('admin', 'gerente', 'estoquista'), async (req, r
     }
     const estoqueAnterior = produto.estoque
     const estoqueAtual = produto.estoque - Number(quantidade)
-    await Produto.findByIdAndUpdate(produtoId, { $inc: { estoque: -Number(quantidade) } })
+    // Decremento condicional e atômico — se duas saídas concorrentes acontecerem pro
+    // mesmo produto, a segunda encontra o filtro estoque:{$gte} já não bate mais e
+    // falha aqui, em vez de decrementar cegamente com base num valor lido antes.
+    const atualizado = permitirEstoqueNegativo
+      ? await Produto.findByIdAndUpdate(produtoId, { $inc: { estoque: -Number(quantidade) } }, { new: true })
+      : await Produto.findOneAndUpdate(
+          { _id: produtoId, estoque: { $gte: Number(quantidade) } },
+          { $inc: { estoque: -Number(quantidade) } },
+          { new: true }
+        )
+    if (!atualizado) {
+      const atual = await Produto.findById(produtoId).select('estoque')
+      return res.status(400).json({
+        mensagem: `Estoque insuficiente para ${produto.nome}`,
+        estoqueDisponivel: atual?.estoque ?? 0,
+        solicitado: quantidade
+      })
+    }
     const movimento = await MovimentoEstoque.create({
       produto: produto._id,
       tipo: 'saida',

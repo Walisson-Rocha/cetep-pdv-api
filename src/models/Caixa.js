@@ -30,5 +30,9 @@ const caixaSchema = new mongoose.Schema({
 
 caixaSchema.index({ status: 1 })
 caixaSchema.index({ createdAt: -1 })
+// Garante no banco que só existe um caixa "aberto" por vez — a checagem
+// findOne+create no controller não é atômica sozinha (dois cliques/terminais
+// simultâneos passavam os dois pela checagem antes de qualquer um criar o registro).
+caixaSchema.index({ status: 1 }, { unique: true, partialFilterExpression: { status: 'aberto' } })
 
 module.exports = mongoose.model('Caixa', caixaSchema)

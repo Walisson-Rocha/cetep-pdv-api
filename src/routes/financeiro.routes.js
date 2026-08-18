@@ -24,7 +24,7 @@ router.get('/', authorize('admin', 'gerente'), async (req, res) => {
     ])
 
     const totalReceita = vendas.reduce((acc, v) => acc + v.total, 0)
-    const totalDespesas = despesas.filter(d => !d.paga === false || true).reduce((acc, d) => acc + d.valor, 0)
+    const totalDespesas = despesas.reduce((acc, d) => acc + d.valor, 0)
 
     // Agrupar por dia para o gráfico de fluxo de caixa
     const receitaPorDia = {}
