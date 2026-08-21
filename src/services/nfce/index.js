@@ -45,4 +45,40 @@ async function emitir(venda, config) {
   }
 }
 
-module.exports = { emitir }
+// Faltava esse wrapper exportado — venda.controller.js e nfce.routes.js chamam
+// nfceService.cancelar(...), mas só "emitir" estava sendo re-exportado aqui.
+// Cancelamento de NFC-e (manual ou automático ao cancelar a venda) quebrava com
+// "nfceService.cancelar is not a function".
+async function cancelar(referencia, justificativa, config) {
+  try {
+    return await nfceService.cancelar(referencia, justificativa, config)
+  } catch (err) {
+    if (err.response) {
+      logger.error(`Focus NFe HTTP ${err.response.status} — body: ${JSON.stringify(err.response.data)}`)
+    }
+    const apiMsg = err.response?.data?.erros?.[0]?.mensagem
+      || err.response?.data?.mensagem_sefaz
+      || err.response?.data?.mensagem
+      || err.response?.data?.status
+      || err.message
+    throw new Error(`Focus NFe: ${apiMsg}`)
+  }
+}
+
+async function consultarStatus(referencia, config) {
+  try {
+    return await nfceService.consultarStatus(referencia, config)
+  } catch (err) {
+    if (err.response) {
+      logger.error(`Focus NFe HTTP ${err.response.status} — body: ${JSON.stringify(err.response.data)}`)
+    }
+    const apiMsg = err.response?.data?.erros?.[0]?.mensagem
+      || err.response?.data?.mensagem_sefaz
+      || err.response?.data?.mensagem
+      || err.response?.data?.status
+      || err.message
+    throw new Error(`Focus NFe: ${apiMsg}`)
+  }
+}
+
+module.exports = { emitir, cancelar, consultarStatus }
