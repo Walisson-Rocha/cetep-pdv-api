@@ -425,4 +425,4 @@ const vendasCliente = async (req, res) => {
   }
 }
 
-module.exports = { registrar, cancelar, listar, vendasHoje, vendasCliente }
+module.exports = { registrar, cancelar, listar, vendasHoje, vendasCliente, incrementosCaixa, ErroVenda }
