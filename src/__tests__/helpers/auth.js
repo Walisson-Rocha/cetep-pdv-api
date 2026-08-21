@@ -8,7 +8,7 @@ const criarUsuario = async (overrides = {}) => {
   const user = await User.create({
     nome: overrides.nome || `Usuário Teste ${counter}`,
     email: overrides.email || `teste${counter}@exemplo.com`,
-    senha: overrides.senha || 'senha12345',
+    senha: overrides.senha || 'senha123465',
     perfil: overrides.perfil || 'admin',
     telefone: overrides.telefone || '119999999999',
     ativo: overrides.ativo !== undefined ? overrides.ativo : true,
