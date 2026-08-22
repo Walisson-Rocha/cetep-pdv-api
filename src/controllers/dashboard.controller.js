@@ -1,6 +1,7 @@
 const logger = require('../config/logger')
 const Produto = require('../models/Produto')
 const Venda = require('../models/Venda')
+const Troca = require('../models/Troca')
 const Caixa = require('../models/Caixa')
 const Cliente = require('../models/Cliente')
 const Despesa = require('../models/Despesa')
@@ -52,12 +53,18 @@ const resumo = async (req, res) => {
 
     const agora = new Date()
 
-    const [vendasHoje, vendasOntem, vendasMes, vendas7dias, caixasAbertas, clientesComFiado, despesasHoje, config, produtosAgg, rankingAgg] =
+    const [vendasHoje, vendasOntem, vendasMes, vendas7dias, trocasHoje, trocasOntem, trocasMes, caixasAbertas, clientesComFiado, despesasHoje, config, produtosAgg, rankingAgg] =
       await Promise.all([
         Venda.find({ createdAt: { $gte: inicioHoje,  $lte: fimHoje  }, cancelada: false }).select('total formaPagamento createdAt'),
         Venda.find({ createdAt: { $gte: inicioOntem, $lte: fimOntem }, cancelada: false }).select('total'),
         Venda.find({ createdAt: { $gte: inicioMes,   $lte: fimMes   }, cancelada: false }).select('total'),
         Venda.find({ createdAt: { $gte: brt7diasAtras }, cancelada: false }).select('total createdAt'),
+        // Trocas também mudam o total de vendas no caixa (diferença paga soma,
+        // devolução ao cliente subtrai) — sem isso o dashboard nunca bate com o
+        // fechamento assim que existe alguma troca no período.
+        Troca.find({ createdAt: { $gte: inicioHoje,  $lte: fimHoje  } }).select('diferenca formaPagamentoDiferenca'),
+        Troca.find({ createdAt: { $gte: inicioOntem, $lte: fimOntem } }).select('diferenca'),
+        Troca.find({ createdAt: { $gte: inicioMes,   $lte: fimMes   } }).select('diferenca'),
         Caixa.find({ status: 'aberto' }).populate('abertoPor', 'nome').select('abertoPor abertoEm totalVendas saldoInicial'),
         Cliente.find({ saldoFiado: { $gt: 0 } }).select('saldoFiado'),
         Despesa.find({ createdAt: { $gte: inicioHoje, $lte: fimHoje } }).select('valor'),
@@ -105,10 +112,10 @@ const resumo = async (req, res) => {
 
     const stats = produtosAgg[0] || { total: 0, zerados: 0, baixos: 0, vencendo: 0, produtosVencendo: [] }
 
-    const totalVendasHoje = vendasHoje.reduce((acc, v) => acc + v.total, 0)
-    const totalVendasMes  = vendasMes.reduce((acc, v) => acc + v.total, 0)
+    const totalVendasHoje = vendasHoje.reduce((acc, v) => acc + v.total, 0) + trocasHoje.reduce((acc, t) => acc + t.diferenca, 0)
+    const totalVendasMes  = vendasMes.reduce((acc, v) => acc + v.total, 0) + trocasMes.reduce((acc, t) => acc + t.diferenca, 0)
     const ticketMedio = vendasHoje.length > 0 ? totalVendasHoje / vendasHoje.length : 0
-    const totalOntem = vendasOntem.reduce((acc, v) => acc + v.total, 0)
+    const totalOntem = vendasOntem.reduce((acc, v) => acc + v.total, 0) + trocasOntem.reduce((acc, t) => acc + t.diferenca, 0)
     const variacaoVendas = totalOntem > 0
       ? Math.round(((totalVendasHoje - totalOntem) / totalOntem) * 100)
       : 0
@@ -117,6 +124,11 @@ const resumo = async (req, res) => {
       acc[v.formaPagamento] = (acc[v.formaPagamento] || 0) + v.total
       return acc
     }, {})
+    trocasHoje.forEach(t => {
+      if (t.diferenca > 0 && t.formaPagamentoDiferenca) {
+        porForma[t.formaPagamentoDiferenca] = (porForma[t.formaPagamentoDiferenca] || 0) + t.diferenca
+      }
+    })
 
     const totalFiado = clientesComFiado.reduce((acc, c) => acc + c.saldoFiado, 0)
     const totalDespesasHoje = despesasHoje.reduce((acc, d) => acc + d.valor, 0)

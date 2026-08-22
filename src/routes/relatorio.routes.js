@@ -2,6 +2,7 @@ const logger = require('../config/logger')
 const express = require('express')
 const router = express.Router()
 const Venda = require('../models/Venda')
+const Troca = require('../models/Troca')
 const Produto = require('../models/Produto')
 const Log = require('../models/Log')
 const Configuracao = require('../models/Configuracao')
@@ -19,15 +20,25 @@ router.get('/vendas', authorize('admin', 'gerente'), async (req, res) => {
     const filtro = { cancelada: false }
     if (inicio) filtro.createdAt = { $gte: new Date(inicio) }
     if (fim) filtro.createdAt = { ...filtro.createdAt, $lte: new Date(fim) }
-    const [vendas, config] = await Promise.all([
+    // Mesmo filtro de data pras trocas — elas também mexem no caixa (diferença
+    // paga entra, devolução ao cliente sai), então precisam entrar aqui também
+    // pra "total" e "por categoria" baterem com o que o caixa realmente soma.
+    const filtroTroca = {}
+    if (inicio) filtroTroca.createdAt = { $gte: new Date(inicio) }
+    if (fim) filtroTroca.createdAt = { ...filtroTroca.createdAt, $lte: new Date(fim) }
+    const [vendas, trocas, config] = await Promise.all([
       Venda.find(filtro)
         .populate('vendedor', 'nome comissao')
         .populate({ path: 'itens.produto', select: 'categoria', populate: { path: 'categoria', select: 'nome icone' } })
         .sort({ createdAt: -1 }),
+      Troca.find(filtroTroca)
+        .populate('vendedor', 'nome')
+        .populate({ path: 'itensNovos.produto', select: 'categoria', populate: { path: 'categoria', select: 'nome icone' } })
+        .populate({ path: 'itensDevolvidos.produto', select: 'categoria', populate: { path: 'categoria', select: 'nome icone' } }),
       Configuracao.findOne().lean()
     ])
     const comissaoAtiva = config?.comissao?.ativa ?? false
-    const total = vendas.reduce((acc, v) => acc + v.total, 0)
+    let total = vendas.reduce((acc, v) => acc + v.total, 0)
     const porForma = vendas.reduce((acc, v) => {
       acc[v.formaPagamento] = (acc[v.formaPagamento] || 0) + v.total
       return acc
@@ -61,6 +72,45 @@ router.get('/vendas', authorize('admin', 'gerente'), async (req, res) => {
         porCategoriaDetalhe[catNome][prodNome].total += valorLiquido
       })
     })
+
+    // Trocas entram aqui do mesmo jeito que entram no caixa: item novo soma na
+    // categoria (é uma venda de fato), item devolvido subtrai (estorna a receita
+    // que a venda original já tinha contado) — a soma líquida é sempre a diferença,
+    // igual ao que troca.controller.js aplica no totalVendas do caixa.
+    trocas.forEach(t => {
+      total += t.diferenca
+      const nome = t.vendedor?.nome || 'Sem nome'
+      if (!porVendedor[nome]) porVendedor[nome] = { total: 0, quantidade: 0, comissaoPct: 0, comissaoValor: 0 }
+      porVendedor[nome].total += t.diferenca
+      if (t.diferenca > 0 && t.formaPagamentoDiferenca) {
+        porForma[t.formaPagamentoDiferenca] = (porForma[t.formaPagamentoDiferenca] || 0) + t.diferenca
+      }
+      t.itensNovos.forEach(item => {
+        const cat = item.produto?.categoria
+        const catNome = cat?.nome || 'Sem categoria'
+        if (!porCategoria[catNome]) porCategoria[catNome] = { total: 0, quantidade: 0, icone: cat?.icone || '📦' }
+        porCategoria[catNome].total += item.subtotal || 0
+        porCategoria[catNome].quantidade += item.quantidade || 0
+        if (!porCategoriaDetalhe[catNome]) porCategoriaDetalhe[catNome] = {}
+        const prodNome = item.nomeProduto || 'Produto'
+        if (!porCategoriaDetalhe[catNome][prodNome]) porCategoriaDetalhe[catNome][prodNome] = { quantidade: 0, total: 0 }
+        porCategoriaDetalhe[catNome][prodNome].quantidade += item.quantidade || 0
+        porCategoriaDetalhe[catNome][prodNome].total += item.subtotal || 0
+      })
+      t.itensDevolvidos.forEach(item => {
+        const cat = item.produto?.categoria
+        const catNome = cat?.nome || 'Sem categoria'
+        if (!porCategoria[catNome]) porCategoria[catNome] = { total: 0, quantidade: 0, icone: cat?.icone || '📦' }
+        porCategoria[catNome].total -= item.subtotal || 0
+        porCategoria[catNome].quantidade -= item.quantidade || 0
+        if (!porCategoriaDetalhe[catNome]) porCategoriaDetalhe[catNome] = {}
+        const prodNome = item.nomeProduto || 'Produto'
+        if (!porCategoriaDetalhe[catNome][prodNome]) porCategoriaDetalhe[catNome][prodNome] = { quantidade: 0, total: 0 }
+        porCategoriaDetalhe[catNome][prodNome].quantidade -= item.quantidade || 0
+        porCategoriaDetalhe[catNome][prodNome].total -= item.subtotal || 0
+      })
+    })
+
     res.json({ total, quantidade: vendas.length, porFormaPagamento: porForma, porVendedor, porCategoria, porCategoriaDetalhe, comissaoAtiva })
   } catch (error) {
     logger.error('Erro ao gerar relatório de vendas:', error)

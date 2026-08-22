@@ -132,9 +132,14 @@ const registrar = async (req, res) => {
           $inc: incrementosCaixa(formaPagamentoDiferenca, formasPagamentoDiferenca, diferenca)
         }, { session })
       } else if (diferenca < 0) {
-        // Loja devolveu dinheiro ao cliente — registra como sangria automática,
-        // pra reduzir o saldo esperado em espécie e o fechamento bater certo.
+        // Loja devolveu dinheiro ao cliente — duas coisas acontecem, não só uma:
+        // 1) o dinheiro sai fisicamente da gaveta → sangria (mantém o saldo em
+        //    espécie do fechamento correto);
+        // 2) a receita reconhecida cai (o item devolvido já tinha contado como
+        //    venda antes) → decrementa totalVendas, senão o relatório de vendas
+        //    continua maior que o caixa depois de qualquer troca com devolução.
         await Caixa.findByIdAndUpdate(caixa._id, {
+          $inc: { totalVendas: diferenca },
           $push: {
             sangrias: {
               valor: Math.abs(diferenca),
