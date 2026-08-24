@@ -10,7 +10,7 @@ const criarUsuario = async (overrides = {}) => {
     email: overrides.email || `teste${counter}@exemplo.com`,
     senha: overrides.senha || 'senha123',
     perfil: overrides.perfil || 'admin',
-    telefone: overrides.telefone || '11999999999',
+    telefone: overrides.telefone || '1199999999',
     ativo: overrides.ativo !== undefined ? overrides.ativo : true,
   })
   return user
