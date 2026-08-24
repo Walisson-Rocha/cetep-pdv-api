@@ -7,7 +7,11 @@ const itemTrocaSchema = new mongoose.Schema({
   nomeProduto: { type: String, required: true },
   quantidade: { type: Number, required: true, min: 0.001 },
   precoUnitario: { type: Number, required: true },
-  subtotal: { type: Number, required: true }
+  subtotal: { type: Number, required: true },
+  // Só preenchido em itensDevolvidos quando a troca está vinculada a uma venda de origem —
+  // aponta pro índice do item dentro de venda.itens, usado pra travar troca duplicada do
+  // mesmo item e pra puxar o preço realmente cobrado (não o preço de catálogo atual).
+  itemIndex: { type: Number, default: null },
 }, { _id: false })
 
 const trocaSchema = new mongoose.Schema({
@@ -27,6 +31,7 @@ const trocaSchema = new mongoose.Schema({
 
 trocaSchema.index({ createdAt: -1 })
 trocaSchema.index({ caixa: 1, createdAt: -1 })
+trocaSchema.index({ vendaOrigem: 1 })
 
 trocaSchema.pre('save', async function (next) {
   if (this.isNew) {

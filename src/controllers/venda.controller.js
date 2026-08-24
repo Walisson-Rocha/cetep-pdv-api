@@ -66,7 +66,22 @@ const registrar = async (req, res) => {
       const permitirEstoqueNegativo = config?.estoqueNegativo ?? false
       let subtotal = 0
       const itensCompletos = []
-      const produtoMap = new Map()
+      // Busca todos os produtos do carrinho numa única consulta, em vez de um round-trip por item
+      const produtos = await Produto.find({ _id: { $in: itens.map(i => i.produtoId) } }).session(session)
+      const produtoMap = new Map(produtos.map(p => [p._id.toString(), p]))
+      // Combo/kit não tem estoque próprio — a baixa e a checagem são feitas em cima dos
+      // componentes reais, não do produto-combo em si (que é puramente virtual).
+      const idsComponentes = produtos
+        .filter(p => p.tipo === 'combo')
+        .flatMap(p => p.componentes.map(c => c.produto.toString()))
+      if (idsComponentes.length) {
+        const componentesReais = await Produto.find({ _id: { $in: idsComponentes } }).session(session)
+        for (const cp of componentesReais) produtoMap.set(cp._id.toString(), cp)
+        const idComponenteFaltando = idsComponentes.find(id => !produtoMap.has(id))
+        if (idComponenteFaltando) {
+          throw new ErroVenda(400, 'Um dos kits selecionados tem um componente que não existe mais. Edite o kit em Estoque antes de vender.')
+        }
+      }
       // Soma a quantidade pedida por produto antes de checar estoque — um carrinho com
       // duas linhas do mesmo produto não pode passar na checagem individual e depois
       // vender mais do que existe no total.
@@ -75,13 +90,16 @@ const registrar = async (req, res) => {
         quantidadeTotalPorProduto.set(item.produtoId, (quantidadeTotalPorProduto.get(item.produtoId) || 0) + item.quantidade)
       }
       for (const item of itens) {
-        const produto = await Produto.findById(item.produtoId).session(session)
+        const produto = produtoMap.get(item.produtoId)
         if (!produto || !produto.ativo) {
           throw new ErroVenda(400, `Produto não encontrado: ${item.produtoId}`)
         }
-        produtoMap.set(produto._id.toString(), produto)
+        if (produto.tipo === 'combo' && !produto.componentes?.length) {
+          throw new ErroVenda(400, `Kit "${produto.nome}" não tem componentes cadastrados`)
+        }
         const quantidadeTotalPedida = quantidadeTotalPorProduto.get(item.produtoId)
-        if (!permitirEstoqueNegativo && produto.estoque < quantidadeTotalPedida) {
+        // Combo não tem estoque próprio — a checagem real é feita mais abaixo, em cima dos componentes
+        if (produto.tipo !== 'combo' && !permitirEstoqueNegativo && produto.estoque < quantidadeTotalPedida) {
           throw new ErroVenda(400, `Estoque insuficiente para ${produto.nome}`, {
             estoqueDisponivel: produto.estoque,
             solicitado: quantidadeTotalPedida
@@ -115,6 +133,32 @@ const registrar = async (req, res) => {
           subtotal: itemSubtotal
         })
       }
+      // Checagem agregada de estoque dos componentes de kit — soma a necessidade de todos
+      // os kits selecionados que compartilham um componente antes de checar, senão dois
+      // kits que dependem do mesmo componente passam cada um isolado e estouram juntos.
+      if (!permitirEstoqueNegativo) {
+        const necessidades = new Map()
+        for (const [produtoId, quantidade] of quantidadeTotalPorProduto) {
+          const p = produtoMap.get(produtoId)
+          if (p.tipo !== 'combo') continue
+          for (const c of p.componentes) {
+            const key = c.produto.toString()
+            necessidades.set(key, (necessidades.get(key) || 0) + c.quantidade * quantidade)
+          }
+        }
+        for (const [compId, necessario] of necessidades) {
+          const compReal = produtoMap.get(compId)
+          const jaDireto = quantidadeTotalPorProduto.get(compId) || 0
+          const totalNecessario = necessario + jaDireto
+          if (!compReal || compReal.estoque < totalNecessario) {
+            throw new ErroVenda(400, `Estoque insuficiente de "${compReal?.nome || compId}" para completar o(s) kit(s) selecionado(s)`, {
+              estoqueDisponivel: compReal?.estoque ?? 0,
+              solicitado: totalNecessario
+            })
+          }
+        }
+      }
+
       total = Math.max(0, subtotal - desconto)
 
       // Valida limite de crédito antes de registrar fiado
@@ -138,22 +182,36 @@ const registrar = async (req, res) => {
       }], { session })
       numero = venda.numero
 
+      // Achata os itens vendidos em linhas sobre produtos reais, expandindo kit/combo pros
+      // seus componentes — o produto-combo em si nunca recebe baixa de estoque (é virtual).
+      const linhasDebito = []
       for (const item of itensCompletos) {
         const produto = produtoMap.get(item.produto.toString())
+        if (produto.tipo === 'combo') {
+          for (const c of produto.componentes) {
+            linhasDebito.push({ produto: produtoMap.get(c.produto.toString()), quantidade: c.quantidade * item.quantidade, kitNome: produto.nome })
+          }
+        } else {
+          linhasDebito.push({ produto, quantidade: item.quantidade, kitNome: null })
+        }
+      }
+      for (const linha of linhasDebito) {
+        const produto = linha.produto
         const estoqueAnterior = produto.estoque
-        const estoqueAtual = produto.estoque - item.quantidade
-        await Produto.findByIdAndUpdate(produto._id, { $inc: { estoque: -item.quantidade } }, { session })
+        const estoqueAtual = produto.estoque - linha.quantidade
+        produto.estoque = estoqueAtual // reflete no map — duas linhas do mesmo componente (direto + via kit) não leem um estoqueAnterior desatualizado
+        await Produto.findByIdAndUpdate(produto._id, { $inc: { estoque: -linha.quantidade } }, { session })
         await MovimentoEstoque.create([{
           produto: produto._id, tipo: 'saida',
-          quantidade: item.quantidade,
+          quantidade: linha.quantidade,
           estoqueAnterior, estoqueAtual,
-          motivo: `Venda #${venda.numero}`,
+          motivo: linha.kitNome ? `Venda #${venda.numero} (kit: ${linha.kitNome})` : `Venda #${venda.numero}`,
           venda: venda._id, responsavel: req.user._id
         }], { session })
         // FEFO: deduz dos lotes mais antigos primeiro
         const lotes = await Lote.find({ produto: produto._id, ativo: true, quantidade: { $gt: 0 } }).session(session).sort({ dataValidade: 1 })
         if (lotes.length > 0) {
-          let restante = item.quantidade
+          let restante = linha.quantidade
           for (const lote of lotes) {
             if (restante <= 0) break
             const deduzir = Math.min(lote.quantidade, restante)
@@ -257,20 +315,43 @@ const cancelar = async (req, res) => {
       v.canceladaEm = new Date()
       await v.save({ session })
 
+      // Item de kit cancelado devolve estoque pros componentes reais, não pro produto-combo
+      // (que nunca teve baixa própria — é virtual).
+      const produtosCancel = await Produto.find({ _id: { $in: v.itens.map(i => i.produto) } }).session(session)
+      const produtoMapCancel = new Map(produtosCancel.map(p => [p._id.toString(), p]))
+      const idsComponentesCancel = produtosCancel
+        .filter(p => p.tipo === 'combo')
+        .flatMap(p => p.componentes.map(c => c.produto.toString()))
+      if (idsComponentesCancel.length) {
+        const componentesReaisCancel = await Produto.find({ _id: { $in: idsComponentesCancel } }).session(session)
+        for (const cp of componentesReaisCancel) produtoMapCancel.set(cp._id.toString(), cp)
+      }
+      const linhasRestauro = []
       for (const item of v.itens) {
-        const produto = await Produto.findById(item.produto).session(session)
-        if (produto) {
-          const estoqueAnterior = produto.estoque
-          const estoqueAtual = produto.estoque + item.quantidade
-          await Produto.findByIdAndUpdate(produto._id, { $inc: { estoque: item.quantidade } }, { session })
-          await MovimentoEstoque.create([{
-            produto: produto._id, tipo: 'entrada',
-            quantidade: item.quantidade,
-            estoqueAnterior, estoqueAtual,
-            motivo: `Cancelamento venda #${v.numero}`,
-            venda: v._id, responsavel: req.user._id
-          }], { session })
+        const p = produtoMapCancel.get(item.produto.toString())
+        if (!p) continue
+        if (p.tipo === 'combo') {
+          for (const c of p.componentes) {
+            const compReal = produtoMapCancel.get(c.produto.toString())
+            if (compReal) linhasRestauro.push({ produto: compReal, quantidade: c.quantidade * item.quantidade, kitNome: p.nome })
+          }
+        } else {
+          linhasRestauro.push({ produto: p, quantidade: item.quantidade, kitNome: null })
         }
+      }
+      for (const linha of linhasRestauro) {
+        const produto = linha.produto
+        const estoqueAnterior = produto.estoque
+        const estoqueAtual = produto.estoque + linha.quantidade
+        produto.estoque = estoqueAtual
+        await Produto.findByIdAndUpdate(produto._id, { $inc: { estoque: linha.quantidade } }, { session })
+        await MovimentoEstoque.create([{
+          produto: produto._id, tipo: 'entrada',
+          quantidade: linha.quantidade,
+          estoqueAnterior, estoqueAtual,
+          motivo: linha.kitNome ? `Cancelamento venda #${v.numero} (kit: ${linha.kitNome})` : `Cancelamento venda #${v.numero}`,
+          venda: v._id, responsavel: req.user._id
+        }], { session })
       }
       if (v.formaPagamento === 'fiado' && v.cliente) {
         await Cliente.findByIdAndUpdate(v.cliente, { $inc: { saldoFiado: -v.total } }, { session })
@@ -349,14 +430,19 @@ const cancelar = async (req, res) => {
 
 const listar = async (req, res) => {
   try {
-    const { inicio, fim, formaPagamento, page = 1, limit = 20 } = req.query
+    const { inicio, fim, formaPagamento, numero, produtoId, page = 1, limit = 20 } = req.query
     const filtro = {}
-    if (inicio || fim) {
+    if (numero) {
+      // Busca por número é exata — ignora o filtro de período, o objetivo é achar uma venda específica
+      filtro.numero = Number(numero)
+    } else if (inicio || fim) {
       filtro.createdAt = {}
       if (inicio) filtro.createdAt.$gte = new Date(inicio)
       if (fim) filtro.createdAt.$lte = new Date(fim)
     }
     if (formaPagamento) filtro.formaPagamento = formaPagamento
+    // Usado pela tela de trocas pra localizar vendas que contêm um produto específico
+    if (produtoId) filtro['itens.produto'] = produtoId
     const vendas = await Venda.find(filtro)
       .populate('cliente', 'nome')
       .populate('colaborador', 'nome')

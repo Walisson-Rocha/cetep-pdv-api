@@ -23,7 +23,7 @@ async function emitir(venda, config) {
       || err.response?.data?.mensagem
       || err.response?.data?.status
       || err.message
-    throw new Error(`Focus NFe: ${apiMsg}`)
+    throw new Error(`Focus NFe: ${apiMsg}`, { cause: err })
   }
 
   const autorizado = data.status === 'autorizado'
@@ -61,7 +61,7 @@ async function cancelar(referencia, justificativa, config) {
       || err.response?.data?.mensagem
       || err.response?.data?.status
       || err.message
-    throw new Error(`Focus NFe: ${apiMsg}`)
+    throw new Error(`Focus NFe: ${apiMsg}`, { cause: err })
   }
 }
 
@@ -77,7 +77,7 @@ async function consultarStatus(referencia, config) {
       || err.response?.data?.mensagem
       || err.response?.data?.status
       || err.message
-    throw new Error(`Focus NFe: ${apiMsg}`)
+    throw new Error(`Focus NFe: ${apiMsg}`, { cause: err })
   }
 }
 
