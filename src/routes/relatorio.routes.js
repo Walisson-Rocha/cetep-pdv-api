@@ -368,10 +368,16 @@ router.get('/categorias-por-vendedor', authorize('admin', 'gerente'), async (req
     const filtro = { cancelada: false }
     if (inicio) filtro.createdAt = { $gte: new Date(inicio) }
     if (fim) filtro.createdAt = { ...(filtro.createdAt || {}), $lte: new Date(new Date(fim).setHours(23, 59, 59, 999)) }
-    const vendas = await Venda.find(filtro)
-      .populate('vendedor', 'nome')
-      .populate({ path: 'itens.produto', select: 'categoria', populate: { path: 'categoria', select: 'nome icone' } })
-      .sort({ createdAt: -1 })
+    const [vendas, trocas] = await Promise.all([
+      Venda.find(filtro)
+        .populate('vendedor', 'nome')
+        .populate({ path: 'itens.produto', select: 'categoria', populate: { path: 'categoria', select: 'nome icone' } })
+        .sort({ createdAt: -1 }),
+      Troca.find(filtro.createdAt ? { createdAt: filtro.createdAt } : {})
+        .populate('vendedor', 'nome')
+        .populate({ path: 'itensNovos.produto', select: 'categoria', populate: { path: 'categoria', select: 'nome icone' } })
+        .populate({ path: 'itensDevolvidos.produto', select: 'categoria', populate: { path: 'categoria', select: 'nome icone' } }),
+    ])
     const porVendedorCategoria = {}
     vendas.forEach(v => {
       const vendNome = v.vendedor?.nome || 'Sem vendedor'
@@ -386,6 +392,30 @@ router.get('/categorias-por-vendedor', authorize('admin', 'gerente'), async (req
           porVendedorCategoria[vendNome][catNome] = { nome: catNome, icone: catIcone, total: 0, quantidade: 0 }
         porVendedorCategoria[vendNome][catNome].total += (item.subtotal || 0) * fatorDesconto
         porVendedorCategoria[vendNome][catNome].quantidade += item.quantidade || 0
+      })
+    })
+    // Trocas somam/subtraem igual no /vendas — item novo é receita da categoria,
+    // item devolvido estorna a receita que a venda original já tinha contado.
+    trocas.forEach(t => {
+      const vendNome = t.vendedor?.nome || 'Sem vendedor'
+      if (!porVendedorCategoria[vendNome]) porVendedorCategoria[vendNome] = {}
+      t.itensNovos.forEach(item => {
+        const cat = item.produto?.categoria
+        const catNome = cat?.nome || 'Sem categoria'
+        const catIcone = cat?.icone || '📦'
+        if (!porVendedorCategoria[vendNome][catNome])
+          porVendedorCategoria[vendNome][catNome] = { nome: catNome, icone: catIcone, total: 0, quantidade: 0 }
+        porVendedorCategoria[vendNome][catNome].total += item.subtotal || 0
+        porVendedorCategoria[vendNome][catNome].quantidade += item.quantidade || 0
+      })
+      t.itensDevolvidos.forEach(item => {
+        const cat = item.produto?.categoria
+        const catNome = cat?.nome || 'Sem categoria'
+        const catIcone = cat?.icone || '📦'
+        if (!porVendedorCategoria[vendNome][catNome])
+          porVendedorCategoria[vendNome][catNome] = { nome: catNome, icone: catIcone, total: 0, quantidade: 0 }
+        porVendedorCategoria[vendNome][catNome].total -= item.subtotal || 0
+        porVendedorCategoria[vendNome][catNome].quantidade -= item.quantidade || 0
       })
     })
     const vendedores = Object.entries(porVendedorCategoria).map(([nome, cats]) => ({
@@ -464,7 +494,7 @@ router.get('/dre', authorize('admin', 'gerente'), async (req, res) => {
       filtroCancelada.createdAt = { ...(filtroCancelada.createdAt || {}), $lte: fimDate }
       filtroDespesa.createdAt = { ...(filtroDespesa.createdAt || {}), $lte: fimDate }
     }
-    const [vendas, canceladas, despesas, config] = await Promise.all([
+    const [vendas, canceladas, despesas, config, trocas] = await Promise.all([
       Venda.find(filtroVenda)
         .populate({ path: 'itens.produto', select: 'precoCusto' })
         .populate('vendedor', 'nome comissao')
@@ -472,8 +502,11 @@ router.get('/dre', authorize('admin', 'gerente'), async (req, res) => {
       Venda.find(filtroCancelada).lean(),
       Despesa.find(filtroDespesa).lean(),
       Configuracao.findOne().lean(),
+      // Trocas também afetam a receita bruta (diferença paga soma, devolução ao
+      // cliente subtrai) — sem isso o DRE nunca bate com o caixa/relatório de vendas.
+      Troca.find(inicio || fim ? { createdAt: filtroVenda.createdAt } : {}).select('diferenca').lean(),
     ])
-    const receitaBruta = vendas.reduce((s, v) => s + v.total, 0)
+    const receitaBruta = vendas.reduce((s, v) => s + v.total, 0) + trocas.reduce((s, t) => s + t.diferenca, 0)
     const descontos = vendas.reduce((s, v) => s + (v.desconto || 0), 0)
     const devolucoes = canceladas.reduce((s, v) => s + v.total, 0)
     const receitaLiquida = receitaBruta - devolucoes
