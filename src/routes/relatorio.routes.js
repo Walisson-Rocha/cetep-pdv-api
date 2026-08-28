@@ -181,12 +181,17 @@ router.get('/clientes', authorize('admin', 'gerente'), async (req, res) => {
 
 router.get('/logs', authorize('admin', 'gerente'), async (req, res) => {
   try {
-    const { page = 1, limit = 50 } = req.query
-    const logs = await Log.find()
+    const { page = 1, limit = 50, inicio, fim } = req.query
+    // Sem isso, o card "Logs registrados" nunca respeitava o filtro de data da
+    // tela — sempre voltava os últimos 50 logs de todo o histórico.
+    const filtro = {}
+    if (inicio) filtro.createdAt = { $gte: new Date(inicio) }
+    if (fim) filtro.createdAt = { ...(filtro.createdAt || {}), $lte: new Date(fim) }
+    const logs = await Log.find(filtro)
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)
-    const total = await Log.countDocuments()
+    const total = await Log.countDocuments(filtro)
     res.json({ logs, total, paginas: Math.ceil(total / limit) })
   } catch (error) {
     logger.error('Erro ao buscar logs:', error)
