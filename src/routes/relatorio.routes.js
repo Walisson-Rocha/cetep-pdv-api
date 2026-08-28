@@ -39,10 +39,20 @@ router.get('/vendas', authorize('admin', 'gerente'), async (req, res) => {
     ])
     const comissaoAtiva = config?.comissao?.ativa ?? false
     let total = vendas.reduce((acc, v) => acc + v.total, 0)
-    const porForma = vendas.reduce((acc, v) => {
-      acc[v.formaPagamento] = (acc[v.formaPagamento] || 0) + v.total
-      return acc
-    }, {})
+    // Pagamento "misto" não pode ir inteiro pro balde genérico "misto" — quebra pelas
+    // formas reais (formasPagamento[]), senão o valor recebido em pix/dinheiro/cartão
+    // dentro de um misto nunca aparece nas formas individuais (só bate por coincidência
+    // quando não existe nenhum misto no período).
+    const porForma = {}
+    vendas.forEach(v => {
+      if (v.formaPagamento === 'misto' && Array.isArray(v.formasPagamento) && v.formasPagamento.length > 0) {
+        v.formasPagamento.forEach(p => {
+          if (p.metodo && p.valor) porForma[p.metodo] = (porForma[p.metodo] || 0) + p.valor
+        })
+      } else {
+        porForma[v.formaPagamento] = (porForma[v.formaPagamento] || 0) + v.total
+      }
+    })
     const porVendedor = {}
     const porCategoria = {}
     const porCategoriaDetalhe = {}

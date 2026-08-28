@@ -120,10 +120,16 @@ const resumo = async (req, res) => {
       ? Math.round(((totalVendasHoje - totalOntem) / totalOntem) * 100)
       : 0
 
-    const porForma = vendasHoje.reduce((acc, v) => {
-      acc[v.formaPagamento] = (acc[v.formaPagamento] || 0) + v.total
-      return acc
-    }, {})
+    const porForma = {}
+    vendasHoje.forEach(v => {
+      if (v.formaPagamento === 'misto' && Array.isArray(v.formasPagamento) && v.formasPagamento.length > 0) {
+        v.formasPagamento.forEach(p => {
+          if (p.metodo && p.valor) porForma[p.metodo] = (porForma[p.metodo] || 0) + p.valor
+        })
+      } else {
+        porForma[v.formaPagamento] = (porForma[v.formaPagamento] || 0) + v.total
+      }
+    })
     trocasHoje.forEach(t => {
       if (t.diferenca > 0 && t.formaPagamentoDiferenca) {
         porForma[t.formaPagamentoDiferenca] = (porForma[t.formaPagamentoDiferenca] || 0) + t.diferenca

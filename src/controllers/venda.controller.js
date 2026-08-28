@@ -473,10 +473,16 @@ const vendasHoje = async (req, res) => {
       .populate('vendedor', 'nome')
       .sort({ createdAt: -1 })
     const total = vendas.reduce((acc, v) => acc + v.total, 0)
-    const porForma = vendas.reduce((acc, v) => {
-      acc[v.formaPagamento] = (acc[v.formaPagamento] || 0) + v.total
-      return acc
-    }, {})
+    const porForma = {}
+    vendas.forEach(v => {
+      if (v.formaPagamento === 'misto' && Array.isArray(v.formasPagamento) && v.formasPagamento.length > 0) {
+        v.formasPagamento.forEach(p => {
+          if (p.metodo && p.valor) porForma[p.metodo] = (porForma[p.metodo] || 0) + p.valor
+        })
+      } else {
+        porForma[v.formaPagamento] = (porForma[v.formaPagamento] || 0) + v.total
+      }
+    })
     res.json({ vendas, total, quantidade: vendas.length, porFormaPagamento: porForma })
   } catch (error) {
     logger.error('Erro ao buscar vendas de hoje:', error)
