@@ -95,7 +95,10 @@ router.get('/vendas', authorize('admin', 'gerente'), async (req, res) => {
       if (t.diferenca > 0 && t.formaPagamentoDiferenca) {
         porForma[t.formaPagamentoDiferenca] = (porForma[t.formaPagamentoDiferenca] || 0) + t.diferenca
       }
-      t.itensNovos.forEach(item => {
+      // Trocas antigas (registradas antes de itensDevolvidos existir no schema) podem
+      // não ter esses arrays gravados — || [] evita que uma delas derrube o relatório
+      // inteiro com um erro 500 assim que a data selecionada incluir esse registro.
+      ;(t.itensNovos || []).forEach(item => {
         const cat = item.produto?.categoria
         const catNome = cat?.nome || 'Sem categoria'
         if (!porCategoria[catNome]) porCategoria[catNome] = { total: 0, quantidade: 0, icone: cat?.icone || '📦' }
@@ -107,7 +110,7 @@ router.get('/vendas', authorize('admin', 'gerente'), async (req, res) => {
         porCategoriaDetalhe[catNome][prodNome].quantidade += item.quantidade || 0
         porCategoriaDetalhe[catNome][prodNome].total += item.subtotal || 0
       })
-      t.itensDevolvidos.forEach(item => {
+      ;(t.itensDevolvidos || []).forEach(item => {
         const cat = item.produto?.categoria
         const catNome = cat?.nome || 'Sem categoria'
         if (!porCategoria[catNome]) porCategoria[catNome] = { total: 0, quantidade: 0, icone: cat?.icone || '📦' }
@@ -414,7 +417,8 @@ router.get('/categorias-por-vendedor', authorize('admin', 'gerente'), async (req
     trocas.forEach(t => {
       const vendNome = t.vendedor?.nome || 'Sem vendedor'
       if (!porVendedorCategoria[vendNome]) porVendedorCategoria[vendNome] = {}
-      t.itensNovos.forEach(item => {
+      // || [] — mesma proteção contra trocas antigas sem itensDevolvidos gravado.
+      ;(t.itensNovos || []).forEach(item => {
         const cat = item.produto?.categoria
         const catNome = cat?.nome || 'Sem categoria'
         const catIcone = cat?.icone || '📦'
@@ -423,7 +427,7 @@ router.get('/categorias-por-vendedor', authorize('admin', 'gerente'), async (req
         porVendedorCategoria[vendNome][catNome].total += item.subtotal || 0
         porVendedorCategoria[vendNome][catNome].quantidade += item.quantidade || 0
       })
-      t.itensDevolvidos.forEach(item => {
+      ;(t.itensDevolvidos || []).forEach(item => {
         const cat = item.produto?.categoria
         const catNome = cat?.nome || 'Sem categoria'
         const catIcone = cat?.icone || '📦'
