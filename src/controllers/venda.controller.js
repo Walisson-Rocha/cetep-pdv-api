@@ -430,7 +430,7 @@ const cancelar = async (req, res) => {
 
 const listar = async (req, res) => {
   try {
-    const { inicio, fim, formaPagamento, numero, produtoId, page = 1, limit = 20 } = req.query
+    const { inicio, fim, formaPagamento, numero, produtoId, fiscal, page = 1, limit = 20 } = req.query
     const filtro = {}
     if (numero) {
       // Busca por número é exata — ignora o filtro de período, o objetivo é achar uma venda específica
@@ -443,6 +443,10 @@ const listar = async (req, res) => {
     if (formaPagamento) filtro.formaPagamento = formaPagamento
     // Usado pela tela de trocas pra localizar vendas que contêm um produto específico
     if (produtoId) filtro['itens.produto'] = produtoId
+    // Separa a aba "Cupom Fiscal" (nfce foi solicitada, qualquer status) da
+    // "Cupom Não Fiscal" (nunca teve NFC-e pedida pra essa venda)
+    if (fiscal === 'true') filtro.nfce = { $exists: true }
+    else if (fiscal === 'false') filtro.nfce = { $exists: false }
     const vendas = await Venda.find(filtro)
       .populate('cliente', 'nome')
       .populate('colaborador', 'nome')
