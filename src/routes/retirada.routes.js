@@ -122,7 +122,7 @@ router.post('/', async (req, res) => {
     // lista falhar, nada do que já foi checado antes chega a ser descontado de verdade.
     await session.withTransaction(async () => {
       const colaborador = await User.findById(colaboradorId).session(session)
-      if (!colaborador || colaborador.perfil === 'admin' || !colaborador.ativo)
+      if (!colaborador || !colaborador.ativo)
         throw new Error('Usuário inválido para retirada')
       colaboradorNome = colaborador.nome
 
