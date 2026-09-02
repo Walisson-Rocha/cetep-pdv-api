@@ -11,6 +11,7 @@ const Retirada = require('../models/Retirada')
 const User = require('../models/User')
 const Despesa = require('../models/Despesa')
 const { protect, authorize } = require('../middleware/auth.middleware')
+const { fimDoDiaBRT } = require('../utils/brt')
 
 router.use(protect)
 
@@ -32,7 +33,7 @@ router.get('/vendas', authorize('admin', 'gerente'), async (req, res) => {
         .populate({ path: 'itens.produto', select: 'categoria', populate: { path: 'categoria', select: 'nome icone' } })
         .sort({ createdAt: -1 }),
       Troca.find(filtroTroca)
-        .populate('vendedor', 'nome')
+        .populate('vendedor', 'nome comissao')
         .populate({ path: 'itensNovos.produto', select: 'categoria', populate: { path: 'categoria', select: 'nome icone' } })
         .populate({ path: 'itensDevolvidos.produto', select: 'categoria', populate: { path: 'categoria', select: 'nome icone' } }),
       Configuracao.findOne().lean()
@@ -90,8 +91,14 @@ router.get('/vendas', authorize('admin', 'gerente'), async (req, res) => {
     trocas.forEach(t => {
       total += t.diferenca
       const nome = t.vendedor?.nome || 'Sem nome'
-      if (!porVendedor[nome]) porVendedor[nome] = { total: 0, quantidade: 0, comissaoPct: 0, comissaoValor: 0 }
+      if (!porVendedor[nome]) {
+        const comissaoPct = comissaoAtiva ? (t.vendedor?.comissao ?? 0) : 0
+        porVendedor[nome] = { total: 0, quantidade: 0, comissaoPct, comissaoValor: 0 }
+      }
       porVendedor[nome].total += t.diferenca
+      // Recalcula a comissão depois de somar a troca — sem isso o "Total" do
+      // vendedor sobe mas a "Comissão" fica travada no valor de antes da troca.
+      porVendedor[nome].comissaoValor = parseFloat((porVendedor[nome].total * porVendedor[nome].comissaoPct / 100).toFixed(2))
       if (t.diferenca > 0 && t.formaPagamentoDiferenca) {
         porForma[t.formaPagamentoDiferenca] = (porForma[t.formaPagamentoDiferenca] || 0) + t.diferenca
       }
@@ -308,7 +315,7 @@ router.get('/consumo-colaborador', authorize('admin', 'gerente'), async (req, re
     }
     const filtro = { colaborador: colaboradorId }
     if (inicio) filtro.createdAt = { $gte: new Date(inicio) }
-    if (fim) filtro.createdAt = { ...(filtro.createdAt || {}), $lte: new Date(new Date(fim).setHours(23, 59, 59, 999)) }
+    if (fim) filtro.createdAt = { ...(filtro.createdAt || {}), $lte: fimDoDiaBRT(fim) }
     const retiradas = await Retirada.find(filtro)
       .populate('colaborador', 'nome email')
       .populate('registradaPor', 'nome')
@@ -338,7 +345,7 @@ router.get('/consumo-todos-colaboradores', authorize('admin', 'gerente'), async 
     const { inicio, fim } = req.query
     const filtro = {}
     if (inicio) filtro.createdAt = { $gte: new Date(inicio) }
-    if (fim) filtro.createdAt = { ...(filtro.createdAt || {}), $lte: new Date(new Date(fim).setHours(23, 59, 59, 999)) }
+    if (fim) filtro.createdAt = { ...(filtro.createdAt || {}), $lte: fimDoDiaBRT(fim) }
 
     const [colaboradores, retiradas] = await Promise.all([
       User.find({ ativo: true }, 'nome email').sort({ nome: 1 }),
@@ -385,7 +392,7 @@ router.get('/categorias-por-vendedor', authorize('admin', 'gerente'), async (req
     const { inicio, fim } = req.query
     const filtro = { cancelada: false }
     if (inicio) filtro.createdAt = { $gte: new Date(inicio) }
-    if (fim) filtro.createdAt = { ...(filtro.createdAt || {}), $lte: new Date(new Date(fim).setHours(23, 59, 59, 999)) }
+    if (fim) filtro.createdAt = { ...(filtro.createdAt || {}), $lte: fimDoDiaBRT(fim) }
     const [vendas, trocas] = await Promise.all([
       Venda.find(filtro)
         .populate('vendedor', 'nome')
@@ -508,7 +515,7 @@ router.get('/dre', authorize('admin', 'gerente'), async (req, res) => {
       filtroDespesa.createdAt = { $gte: new Date(inicio) }
     }
     if (fim) {
-      const fimDate = new Date(new Date(fim).setHours(23, 59, 59, 999))
+      const fimDate = fimDoDiaBRT(fim)
       filtroVenda.createdAt = { ...(filtroVenda.createdAt || {}), $lte: fimDate }
       filtroCancelada.createdAt = { ...(filtroCancelada.createdAt || {}), $lte: fimDate }
       filtroDespesa.createdAt = { ...(filtroDespesa.createdAt || {}), $lte: fimDate }

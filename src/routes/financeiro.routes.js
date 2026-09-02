@@ -2,10 +2,12 @@ const logger = require('../config/logger')
 const express = require('express')
 const router = express.Router()
 const Venda = require('../models/Venda')
+const Troca = require('../models/Troca')
 const Despesa = require('../models/Despesa')
 const Cliente = require('../models/Cliente')
 const Log = require('../models/Log')
 const { protect, authorize } = require('../middleware/auth.middleware')
+const { getIntervaloHoje, diaBRT } = require('../utils/brt')
 
 router.use(protect)
 
@@ -13,36 +15,45 @@ router.get('/', authorize('admin', 'gerente'), async (req, res) => {
   try {
     const { periodo = '7' } = req.query
     const dias = Math.min(Math.max(parseInt(periodo) || 7, 1), 365)
-    const inicio = new Date()
-    inicio.setDate(inicio.getDate() - dias)
-    inicio.setHours(0, 0, 0, 0)
+    // Início do intervalo em horário de Brasília, não meia-noite do servidor
+    // (UTC) — senão o "hoje" desse período fica ~3h adiantado/atrasado.
+    const inicio = getIntervaloHoje().inicio
+    inicio.setUTCDate(inicio.getUTCDate() - (dias - 1))
 
-    const [vendas, despesas, clientesComFiado] = await Promise.all([
+    const [vendas, trocas, despesas, clientesComFiado] = await Promise.all([
       Venda.find({ createdAt: { $gte: inicio }, cancelada: false }),
+      // Trocas também são receita (diferença paga soma, devolução subtrai) —
+      // sem isso o financeiro nunca bate com dashboard/DRE/relatório de vendas.
+      Troca.find({ createdAt: { $gte: inicio } }),
       Despesa.find({ createdAt: { $gte: inicio } }).sort({ createdAt: -1 }),
       Cliente.find({ saldoFiado: { $gt: 0 } }).sort({ saldoFiado: -1 })
     ])
 
-    const totalReceita = vendas.reduce((acc, v) => acc + v.total, 0)
+    const totalReceita = vendas.reduce((acc, v) => acc + v.total, 0) + trocas.reduce((acc, t) => acc + t.diferenca, 0)
     const totalDespesas = despesas.reduce((acc, d) => acc + d.valor, 0)
 
-    // Agrupar por dia para o gráfico de fluxo de caixa
+    // Agrupar por dia (em BRT) para o gráfico de fluxo de caixa — .toISOString()
+    // usa o dia em UTC, jogando uma venda feita às 22h de BRT pro dia seguinte.
     const receitaPorDia = {}
     for (const v of vendas) {
-      const dia = v.createdAt.toISOString().split('T')[0]
+      const dia = diaBRT(v.createdAt)
       receitaPorDia[dia] = (receitaPorDia[dia] || 0) + v.total
+    }
+    for (const t of trocas) {
+      const dia = diaBRT(t.createdAt)
+      receitaPorDia[dia] = (receitaPorDia[dia] || 0) + t.diferenca
     }
     const despesaPorDia = {}
     for (const d of despesas) {
-      const dia = d.createdAt.toISOString().split('T')[0]
+      const dia = diaBRT(d.createdAt)
       despesaPorDia[dia] = (despesaPorDia[dia] || 0) + d.valor
     }
     const todasDatas = new Set([...Object.keys(receitaPorDia), ...Object.keys(despesaPorDia)])
     // Preencher todos os dias no intervalo
     for (let i = 0; i < dias; i++) {
       const d = new Date(inicio)
-      d.setDate(d.getDate() + i)
-      todasDatas.add(d.toISOString().split('T')[0])
+      d.setUTCDate(d.getUTCDate() + i)
+      todasDatas.add(diaBRT(d))
     }
     const fluxoCaixa = Array.from(todasDatas).sort().map(data => ({
       data: data.split('-').reverse().slice(0, 2).join('/'),

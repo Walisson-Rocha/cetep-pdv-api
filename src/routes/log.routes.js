@@ -3,6 +3,7 @@ const express = require('express')
 const router = express.Router()
 const Log = require('../models/Log')
 const { protect, authorize } = require('../middleware/auth.middleware')
+const { inicioDoDiaBRT, fimDoDiaBRT } = require('../utils/brt')
 
 router.use(protect)
 router.use(authorize('admin', 'gerente'))
@@ -17,8 +18,8 @@ router.get('/', async (req, res) => {
     if (usuario) filtro.nomeUsuario = new RegExp(usuario.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').slice(0, 100), 'i')
     if (inicio || fim) {
       filtro.createdAt = {}
-      if (inicio) filtro.createdAt.$gte = new Date(inicio)
-      if (fim) filtro.createdAt.$lte = new Date(new Date(fim).setHours(23, 59, 59, 999))
+      if (inicio) filtro.createdAt.$gte = inicioDoDiaBRT(inicio)
+      if (fim) filtro.createdAt.$lte = fimDoDiaBRT(fim)
     }
 
     const skip = (parseInt(pagina) - 1) * parseInt(limite)

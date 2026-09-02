@@ -47,7 +47,9 @@ const Cliente = require('../models/Cliente')
 const Retirada = require('../models/Retirada')
 const Log = require('../models/Log')
 const Configuracao = require('../models/Configuracao')
+const Troca = require('../models/Troca')
 const nfceService = require('../services/nfce')
+const { getIntervaloHoje } = require('../utils/brt')
 
 const registrar = async (req, res) => {
   const { itens, formaPagamento, formasPagamento = [], clienteId, colaboradorId, vendedorId, desconto = 0, troco = 0, pontosResgatados = 0, observacao = '', cpfConsumidor = '' } = req.body
@@ -464,19 +466,23 @@ const listar = async (req, res) => {
 
 const vendasHoje = async (req, res) => {
   try {
-    const inicio = new Date()
-    inicio.setHours(0, 0, 0, 0)
-    const fim = new Date()
-    fim.setHours(23, 59, 59, 999)
-    const vendas = await Venda.find({
-      createdAt: { $gte: inicio, $lte: fim },
-      cancelada: false
-    })
-      .populate('cliente', 'nome')
-      .populate('colaborador', 'nome')
-      .populate('vendedor', 'nome')
-      .sort({ createdAt: -1 })
-    const total = vendas.reduce((acc, v) => acc + v.total, 0)
+    // "Hoje" em horário de Brasília, não meia-noite do servidor (UTC) — senão
+    // esse widget do PDV mostra o dia errado por ~3h perto da virada.
+    const { inicio, fim } = getIntervaloHoje()
+    const [vendas, trocas] = await Promise.all([
+      Venda.find({
+        createdAt: { $gte: inicio, $lte: fim },
+        cancelada: false
+      })
+        .populate('cliente', 'nome')
+        .populate('colaborador', 'nome')
+        .populate('vendedor', 'nome')
+        .sort({ createdAt: -1 }),
+      // Trocas também entram no total de hoje — senão esse widget diverge do
+      // dashboard e do caixa assim que existe alguma troca no dia.
+      Troca.find({ createdAt: { $gte: inicio, $lte: fim } }),
+    ])
+    let total = vendas.reduce((acc, v) => acc + v.total, 0)
     const porForma = {}
     vendas.forEach(v => {
       if (v.formaPagamento === 'misto' && Array.isArray(v.formasPagamento) && v.formasPagamento.length > 0) {
@@ -485,6 +491,12 @@ const vendasHoje = async (req, res) => {
         })
       } else {
         porForma[v.formaPagamento] = (porForma[v.formaPagamento] || 0) + v.total
+      }
+    })
+    trocas.forEach(t => {
+      total += t.diferenca
+      if (t.diferenca > 0 && t.formaPagamentoDiferenca) {
+        porForma[t.formaPagamentoDiferenca] = (porForma[t.formaPagamentoDiferenca] || 0) + t.diferenca
       }
     })
     res.json({ vendas, total, quantidade: vendas.length, porFormaPagamento: porForma })

@@ -5,6 +5,7 @@ const ContaPagar = require('../models/ContaPagar')
 const Log = require('../models/Log')
 const { protect, authorize } = require('../middleware/auth.middleware')
 const { randomUUID } = require('crypto')
+const { getIntervaloHoje, inicioDoDiaBRT, fimDoDiaBRT } = require('../utils/brt')
 
 router.use(protect)
 
@@ -14,23 +15,29 @@ router.get('/', authorize('admin', 'gerente'), async (req, res) => {
     const filtro = {}
     if (status === 'pendente') filtro.paga = false
     else if (status === 'paga') filtro.paga = true
-    if (inicio) filtro.vencimento = { $gte: new Date(inicio) }
-    if (fim) filtro.vencimento = { ...(filtro.vencimento || {}), $lte: new Date(new Date(fim).setHours(23, 59, 59, 999)) }
+    if (inicio) filtro.vencimento = { $gte: inicioDoDiaBRT(inicio) }
+    if (fim) filtro.vencimento = { ...(filtro.vencimento || {}), $lte: fimDoDiaBRT(fim) }
     const contas = await ContaPagar.find(filtro)
       .populate('fornecedor', 'nome')
       .populate('registradaPor', 'nome')
       .sort({ vencimento: 1 })
-    const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
+    // "Vencimento" é uma data de calendário (não um instante), então comparamos
+    // pelos componentes de data em UTC — é assim que um input type="date" tipo
+    // "2026-08-28" já é gravado (meia-noite UTC), então isso preserva o dia
+    // pretendido em vez de deslocar por causa do servidor rodar em UTC vs BRT.
+    const hoje = getIntervaloHoje().inicio
+    const hojeData = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth(), hoje.getUTCDate()))
     const totais = {
       totalPendente: 0, totalPago: 0, vencidas: 0, venceHoje: 0, vencemEssaSemana: 0
     }
-    const semana = new Date(hoje); semana.setDate(semana.getDate() + 7)
+    const semana = new Date(hojeData); semana.setUTCDate(semana.getUTCDate() + 7)
     contas.forEach(c => {
       if (c.paga) { totais.totalPago += c.valorPago || c.valor; return }
       totais.totalPendente += c.valor
-      const venc = new Date(c.vencimento); venc.setHours(0, 0, 0, 0)
-      if (venc < hoje) totais.vencidas++
-      else if (venc.getTime() === hoje.getTime()) totais.venceHoje++
+      const v = new Date(c.vencimento)
+      const venc = new Date(Date.UTC(v.getUTCFullYear(), v.getUTCMonth(), v.getUTCDate()))
+      if (venc < hojeData) totais.vencidas++
+      else if (venc.getTime() === hojeData.getTime()) totais.venceHoje++
       else if (venc <= semana) totais.vencemEssaSemana++
     })
     res.json({ contas, totais })

@@ -6,40 +6,7 @@ const Caixa = require('../models/Caixa')
 const Cliente = require('../models/Cliente')
 const Despesa = require('../models/Despesa')
 const Configuracao = require('../models/Configuracao')
-
-// BRT = UTC-3 (Brasil aboliu horário de verão em 2019)
-const BRT_OFFSET_MS = -3 * 60 * 60 * 1000
-
-function agoraBRT() {
-  return new Date(Date.now() + BRT_OFFSET_MS)
-}
-
-function getIntervaloHoje() {
-  const brt = agoraBRT()
-  const y = brt.getUTCFullYear(), m = brt.getUTCMonth(), d = brt.getUTCDate()
-  return {
-    inicio: new Date(Date.UTC(y, m, d, 3, 0, 0, 0)),
-    fim:    new Date(Date.UTC(y, m, d + 1, 2, 59, 59, 999)),
-  }
-}
-
-function getIntervaloOntem() {
-  const brt = agoraBRT()
-  const y = brt.getUTCFullYear(), m = brt.getUTCMonth(), d = brt.getUTCDate()
-  return {
-    inicio: new Date(Date.UTC(y, m, d - 1, 3, 0, 0, 0)),
-    fim:    new Date(Date.UTC(y, m, d, 2, 59, 59, 999)),
-  }
-}
-
-function getIntervaloMes() {
-  const brt = agoraBRT()
-  const y = brt.getUTCFullYear(), m = brt.getUTCMonth()
-  return {
-    inicio: new Date(Date.UTC(y, m, 1, 3, 0, 0, 0)),
-    fim:    new Date(Date.UTC(y, m + 1, 1, 2, 59, 59, 999)),
-  }
-}
+const { agoraBRT, getIntervaloHoje, getIntervaloOntem, getIntervaloMes } = require('../utils/brt')
 
 const resumo = async (req, res) => {
   try {
