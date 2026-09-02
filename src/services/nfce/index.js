@@ -1,6 +1,27 @@
 const nfceService = require('../nfce.service')
 const logger = require('../../config/logger')
 
+// Focus NFe devolve o mesmo formato de campos tanto na emissão quanto na
+// consulta de status (GET /nfce/:referencia) — normaliza os dois pro mesmo
+// formato que venda.controller.js/nfce.routes.js já sabem gravar na venda.
+function normalizarRespostaFocus(data, config) {
+  const autorizado = data.status === 'autorizado'
+  const baseUrl = (config.nfce?.ambiente === 'producao')
+    ? 'https://api.focusnfe.com.br'
+    : 'https://homologacao.focusnfe.com.br'
+  const urlDanfe = data.caminho_danfe ? baseUrl + data.caminho_danfe : ''
+  return {
+    autorizado,
+    status:      data.status || '',
+    cStat:       autorizado ? '100' : (data.codigo_situacao || data.cStat || ''),
+    xMotivo:     data.mensagem_sefaz || data.erros?.[0]?.mensagem || data.status || '',
+    chaveAcesso: data.chave_nfe || '',
+    nProt:       data.numero_protocolo || '',
+    numero:      data.numero || 0,
+    urlDanfe,
+  }
+}
+
 async function emitir(venda, config) {
   const token = config.nfce?.focusApiToken
   if (!token) throw new Error('Token Focus NFe não configurado. Vá em Configurações → Fiscal.')
@@ -26,23 +47,7 @@ async function emitir(venda, config) {
     throw new Error(`Focus NFe: ${apiMsg}`, { cause: err })
   }
 
-  const autorizado = data.status === 'autorizado'
-
-  // Monta URL completa do DANFE (Focus NFe retorna só o caminho)
-  const baseUrl = (config.nfce?.ambiente === 'producao')
-    ? 'https://api.focusnfe.com.br'
-    : 'https://homologacao.focusnfe.com.br'
-  const urlDanfe = data.caminho_danfe ? baseUrl + data.caminho_danfe : ''
-
-  return {
-    autorizado,
-    cStat:       autorizado ? '100' : (data.codigo_situacao || data.cStat || ''),
-    xMotivo:     data.mensagem_sefaz || data.erros?.[0]?.mensagem || data.status || '',
-    chaveAcesso: data.chave_nfe || '',
-    nProt:       data.numero_protocolo || '',
-    numero:      data.numero || 0,
-    urlDanfe,
-  }
+  return normalizarRespostaFocus(data, config)
 }
 
 // Faltava esse wrapper exportado — venda.controller.js e nfce.routes.js chamam
@@ -67,7 +72,8 @@ async function cancelar(referencia, justificativa, config) {
 
 async function consultarStatus(referencia, config) {
   try {
-    return await nfceService.consultarStatus(referencia, config)
+    const data = await nfceService.consultarStatus(referencia, config)
+    return normalizarRespostaFocus(data, config)
   } catch (err) {
     if (err.response) {
       logger.error(`Focus NFe HTTP ${err.response.status} — body: ${JSON.stringify(err.response.data)}`)

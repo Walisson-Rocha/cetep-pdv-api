@@ -126,7 +126,7 @@ router.post('/emitir/:vendaId', authorize('admin', 'gerente', 'caixa'), async (r
   }
 })
 
-// ── Status da NFC-e ──────────────────────────────────────────────────────────
+// ── Status da NFC-e (o que está salvo localmente, sem consultar a SEFAZ) ─────
 router.get('/status/:vendaId', authorize('admin', 'gerente', 'caixa'), async (req, res) => {
   try {
     const venda = await Venda.findById(req.params.vendaId).select('nfce')
@@ -134,6 +134,48 @@ router.get('/status/:vendaId', authorize('admin', 'gerente', 'caixa'), async (re
     res.json({ nfce: venda.nfce })
   } catch (error) {
     res.status(500).json({ mensagem: 'Erro ao buscar status' })
+  }
+})
+
+// ── Reconsulta o status direto na SEFAZ (via Focus NFe) ──────────────────────
+// Diferente da rota acima, essa bate na SEFAZ de verdade e atualiza a venda com
+// a resposta oficial — pra quando o operador quer confirmar que uma nota
+// "autorizada" aqui realmente está válida perante o governo agora mesmo.
+router.get('/verificar/:vendaId', authorize('admin', 'gerente', 'caixa'), async (req, res) => {
+  try {
+    const venda = await Venda.findById(req.params.vendaId)
+    if (!venda) return res.status(404).json({ mensagem: 'Venda não encontrada' })
+    if (!venda.nfce?.referencia) return res.status(400).json({ mensagem: 'Essa venda nunca teve NFC-e solicitada' })
+
+    const config = await Configuracao.findOne()
+    if (!config) return res.status(500).json({ mensagem: 'Configurações não encontradas' })
+
+    let resultado
+    try {
+      resultado = await nfceService.consultarStatus(venda.nfce.referencia, config)
+    } catch (err) {
+      return res.status(422).json({ mensagem: err.message || 'Erro ao consultar SEFAZ' })
+    }
+
+    // Um cancelamento já registrado localmente não deve ser "reautorizado" por
+    // uma consulta antiga na Focus NFe (a nota fica com status final na SEFAZ,
+    // mas o cache deles pode demorar a refletir o cancelamento).
+    if (venda.nfce.status !== 'cancelado') {
+      venda.nfce.status       = resultado.status === 'cancelada' ? 'cancelado' : (resultado.autorizado ? 'autorizado' : 'erro')
+      if (resultado.chaveAcesso) venda.nfce.chaveAcesso = resultado.chaveAcesso
+      if (resultado.numero) venda.nfce.numero = resultado.numero
+      if (resultado.urlDanfe) venda.nfce.urlDanfe = resultado.urlDanfe
+      venda.nfce.erroMensagem = resultado.autorizado ? undefined : resultado.xMotivo
+      await venda.save()
+    }
+
+    res.json({
+      mensagem: resultado.autorizado ? 'Confirmado: NFC-e válida e autorizada pela SEFAZ.' : `SEFAZ: ${resultado.xMotivo || resultado.status}`,
+      nfce: venda.nfce,
+    })
+  } catch (error) {
+    logger.error('Erro ao verificar NFC-e na SEFAZ:', error)
+    res.status(500).json({ mensagem: 'Erro ao verificar NFC-e na SEFAZ' })
   }
 })
 
