@@ -31,7 +31,7 @@ router.use(authorize('admin', 'gerente'))
 // GET /retiradas/colaboradores — lista usuários ativos para retiradas (admin/gerente apenas)
 router.get('/colaboradores', async (req, res) => {
   try {
-    const colaboradores = await User.find({ perfil: { $ne: 'admin' }, ativo: true }, 'nome email perfil')
+    const colaboradores = await User.find({ ativo: true }, 'nome email perfil')
       .sort({ nome: 1 })
     res.json({ colaboradores })
   } catch (error) {
@@ -75,7 +75,7 @@ router.get('/folha', async (req, res) => {
       new Date().getFullYear().toString() + String(new Date().getMonth() + 1).padStart(2, '0')
     )
 
-    const colaboradores = await User.find({ perfil: { $ne: 'admin' }, ativo: true }, 'nome email perfil')
+    const colaboradores = await User.find({ ativo: true }, 'nome email perfil')
     const [retiradas, quitacoes] = await Promise.all([
       Retirada.find({ mes }).populate('colaborador', 'nome email perfil'),
       QuitacaoFolha.find({ mes }).populate('registradaPor', 'nome'),

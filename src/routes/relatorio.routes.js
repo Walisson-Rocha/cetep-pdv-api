@@ -302,7 +302,7 @@ router.get('/produtos-parados', authorize('admin', 'gerente'), async (req, res) 
 router.get('/consumo-colaborador', authorize('admin', 'gerente'), async (req, res) => {
   try {
     const { colaboradorId, inicio, fim } = req.query
-    const colaboradores = await User.find({ perfil: 'colaborador', ativo: true }, 'nome email').sort({ nome: 1 })
+    const colaboradores = await User.find({ ativo: true }, 'nome email').sort({ nome: 1 })
     if (!colaboradorId) {
       return res.json({ colaboradores, retiradas: [], itens: [], totais: { totalValor: 0, totalItens: 0, qtdRetiradas: 0 } })
     }
@@ -341,7 +341,7 @@ router.get('/consumo-todos-colaboradores', authorize('admin', 'gerente'), async 
     if (fim) filtro.createdAt = { ...(filtro.createdAt || {}), $lte: new Date(new Date(fim).setHours(23, 59, 59, 999)) }
 
     const [colaboradores, retiradas] = await Promise.all([
-      User.find({ perfil: 'colaborador', ativo: true }, 'nome email').sort({ nome: 1 }),
+      User.find({ ativo: true }, 'nome email').sort({ nome: 1 }),
       Retirada.find(filtro).populate('colaborador', 'nome email').lean(),
     ])
 
