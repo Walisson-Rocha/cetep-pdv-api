@@ -22,12 +22,18 @@ function normalizarRespostaFocus(data, config) {
   }
 }
 
-async function emitir(venda, config) {
+async function emitir(venda, config, referencia) {
   const token = config.nfce?.focusApiToken
   if (!token) throw new Error('Token Focus NFe não configurado. Vá em Configurações → Fiscal.')
 
-  // Referência única por venda (ObjectId MongoDB = 24 chars, único)
-  const referencia = String(venda._id)
+  // A referência usada aqui PRECISA ser a mesma que fica gravada em
+  // venda.nfce.referencia — cancelar()/consultarStatus() reusam esse valor
+  // depois, e a Focus NFe não reconhece uma referência diferente da que
+  // recebeu na emissão original. Antes essa função ignorava o parâmetro e
+  // calculava a sua própria referência (sem o prefixo "pdv-" que a rota
+  // grava no banco), quebrando cancelamento e reconsulta de toda nota já
+  // emitida sem ninguém perceber (só a emissão em si "funcionava").
+  referencia = referencia || String(venda._id)
 
   logger.info(`NFC-e emitindo via Focus NFe — ref=${referencia} ambiente=${config.nfce?.ambiente || 'homologacao'}`)
 
