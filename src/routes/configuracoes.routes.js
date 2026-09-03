@@ -21,6 +21,7 @@ router.put('/', authorize('admin', 'gerente'), async (req, res) => {
   try {
     const {
       nomeLoja, razaoSocial, cnpj, ie, email, crt,
+      regimeTributario, grupoTributario, cnpjNFe, serieNFCe, serieNFe, observacoesFiscais,
       logradouro, numero, bairro, cidade, uf, cep, complemento, endereco,
       telefone, whatsapp, chavePix, metaMensal,
       notificacoes, estoqueNegativo, emitirNFCe, emitirNFe,
@@ -29,6 +30,7 @@ router.put('/', authorize('admin', 'gerente'), async (req, res) => {
     // Monta o $set sem substituir subdocumentos inteiros (preserva certificado)
     const setFields = {
       nomeLoja, razaoSocial, cnpj, ie, email, crt,
+      regimeTributario, grupoTributario, cnpjNFe, serieNFCe, serieNFe, observacoesFiscais,
       logradouro, numero, bairro, cidade, uf, cep, complemento, endereco,
       telefone, whatsapp, chavePix, metaMensal,
       notificacoes, estoqueNegativo, emitirNFCe, emitirNFe,
