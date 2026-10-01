@@ -11,6 +11,7 @@ const Log = require('../models/Log')
 const Cliente = require('../models/Cliente')
 const Retirada = require('../models/Retirada')
 const { incrementosCaixa, ErroVenda } = require('./venda.controller')
+const { mesAtualBRT } = require('../utils/brt')
 
 // Busca todos os produtos citados numa única consulta e expande qualquer kit/combo
 // pros componentes reais — kit não tem estoque próprio, quem baixa/devolve são os
@@ -275,8 +276,7 @@ const registrar = async (req, res) => {
         }
       }
       if (formaPagamentoDiferenca === 'colaborador' && diferenca > 0 && colaboradorId) {
-        const agora = new Date()
-        const mes = parseInt(`${agora.getFullYear()}${String(agora.getMonth() + 1).padStart(2, '0')}`)
+        const mes = mesAtualBRT()
         await Retirada.create([{
           colaborador: colaboradorId,
           itens: [{

@@ -49,7 +49,7 @@ const Log = require('../models/Log')
 const Configuracao = require('../models/Configuracao')
 const Troca = require('../models/Troca')
 const nfceService = require('../services/nfce')
-const { getIntervaloHoje } = require('../utils/brt')
+const { getIntervaloHoje, mesAtualBRT } = require('../utils/brt')
 
 const registrar = async (req, res) => {
   const { itens, formaPagamento, formasPagamento = [], clienteId, colaboradorId, vendedorId, desconto = 0, troco = 0, pontosResgatados = 0, observacao = '', cpfConsumidor = '' } = req.body
@@ -252,8 +252,7 @@ const registrar = async (req, res) => {
       // Venda descontada do colaborador — cria Retirada para aparecer na folha
       // Estoque já foi deduzido pela venda acima; Retirada.create direto (sem rota) não deduz novamente
       if (formaPagamento === 'colaborador' && colaboradorId) {
-        const agora = new Date()
-        const mes = parseInt(`${agora.getFullYear()}${String(agora.getMonth() + 1).padStart(2, '0')}`)
+        const mes = mesAtualBRT()
         await Retirada.create([{
           colaborador: colaboradorId,
           itens: itensCompletos.map(i => ({

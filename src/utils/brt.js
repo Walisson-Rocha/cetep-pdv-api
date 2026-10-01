@@ -63,4 +63,13 @@ function diaBRT(data) {
   return `${y}-${m}-${d}`
 }
 
-module.exports = { BRT_OFFSET_MS, agoraBRT, getIntervaloHoje, getIntervaloOntem, getIntervaloMes, fimDoDiaBRT, inicioDoDiaBRT, diaBRT }
+// Mês atual (YYYYMM) em horário de Brasília — usar new Date().getFullYear()/
+// getMonth() direto usa a hora LOCAL do processo (UTC no servidor), então uma
+// retirada feita entre 21h e 23h59 de Brasília no último dia do mês era
+// gravada no mês seguinte (já é meia-noite+ em UTC), sumindo da folha certa.
+function mesAtualBRT() {
+  const brt = agoraBRT()
+  return parseInt(`${brt.getUTCFullYear()}${String(brt.getUTCMonth() + 1).padStart(2, '0')}`)
+}
+
+module.exports = { BRT_OFFSET_MS, agoraBRT, getIntervaloHoje, getIntervaloOntem, getIntervaloMes, fimDoDiaBRT, inicioDoDiaBRT, diaBRT, mesAtualBRT }

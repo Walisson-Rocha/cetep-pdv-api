@@ -8,15 +8,14 @@ const Produto = require('../models/Produto')
 const User = require('../models/User')
 const Log = require('../models/Log')
 const { protect, authorize } = require('../middleware/auth.middleware')
+const { mesAtualBRT } = require('../utils/brt')
 
 router.use(protect)
 
 // GET /retiradas/minhas — apenas protect, sem authorize (colaborador vê as próprias)
 router.get('/minhas', async (req, res) => {
   try {
-    const mes = req.query.mes ? parseInt(req.query.mes) : parseInt(
-      new Date().getFullYear().toString() + String(new Date().getMonth() + 1).padStart(2, '0')
-    )
+    const mes = req.query.mes ? parseInt(req.query.mes) : mesAtualBRT()
     const retiradas = await Retirada.find({ colaborador: req.user._id, mes })
       .sort({ createdAt: -1 })
     res.json({ retiradas, mes })
@@ -43,9 +42,7 @@ router.get('/colaboradores', async (req, res) => {
 // GET /retiradas?mes=202605&colaboradorId=xxx&page=1&limit=10
 router.get('/', async (req, res) => {
   try {
-    const mes = req.query.mes ? parseInt(req.query.mes) : parseInt(
-      new Date().getFullYear().toString() + String(new Date().getMonth() + 1).padStart(2, '0')
-    )
+    const mes = req.query.mes ? parseInt(req.query.mes) : mesAtualBRT()
     const page = Math.max(1, parseInt(req.query.page) || 1)
     const limit = Math.min(50, parseInt(req.query.limit) || 10)
     const filtro = { mes }
@@ -71,9 +68,7 @@ router.get('/', async (req, res) => {
 // GET /retiradas/folha?mes=202605 — resumo mensal por colaborador
 router.get('/folha', async (req, res) => {
   try {
-    const mes = req.query.mes ? parseInt(req.query.mes) : parseInt(
-      new Date().getFullYear().toString() + String(new Date().getMonth() + 1).padStart(2, '0')
-    )
+    const mes = req.query.mes ? parseInt(req.query.mes) : mesAtualBRT()
 
     const colaboradores = await User.find({ ativo: true }, 'nome email perfil')
     const [retiradas, quitacoes] = await Promise.all([
@@ -154,8 +149,7 @@ router.post('/', async (req, res) => {
         await Produto.findByIdAndUpdate(item.produto, { $inc: { estoque: -item.quantidade } }, { session })
       }
 
-      const agora = new Date()
-      const mes = parseInt(`${agora.getFullYear()}${String(agora.getMonth() + 1).padStart(2, '0')}`)
+      const mes = mesAtualBRT()
 
       const [r] = await Retirada.create([{
         colaborador: colaboradorId,
