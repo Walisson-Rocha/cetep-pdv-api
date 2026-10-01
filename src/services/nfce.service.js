@@ -124,11 +124,13 @@ async function emitir(venda, config, referencia) {
     formas_pagamento:   montarFormasPagamento(venda),
   }
 
-  // CPF do consumidor (campo avulso ou do cliente cadastrado)
-  const cpfRaw = venda.cpfConsumidor || venda.cliente?.cpf || ''
-  if (cpfRaw) {
-    const cpfDigits = cpfRaw.replace(/\D/g, '')
-    if (cpfDigits.length === 11) payload.cpf_destinatario = cpfDigits
+  // CPF ou CNPJ do consumidor (campo avulso ou do cliente cadastrado) —
+  // a Focus NFe usa um campo diferente pra cada um, nunca os dois juntos.
+  const docRaw = venda.cpfConsumidor || venda.cliente?.cpf || ''
+  if (docRaw) {
+    const docDigits = docRaw.replace(/\D/g, '')
+    if (docDigits.length === 11) payload.cpf_destinatario = docDigits
+    else if (docDigits.length === 14) payload.cnpj_destinatario = docDigits
   }
 
   logger.info(`NFC-e emissão ref=${referencia} ambiente=${ambiente}`)

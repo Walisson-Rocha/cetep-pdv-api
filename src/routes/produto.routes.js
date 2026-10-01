@@ -30,6 +30,7 @@ const validarProdutoAtualizar = [
 router.use(protect)
 router.patch('/fix-csosn', authorize('admin'), ctrl.fixarCsosn)
 router.put('/reajuste', authorize('admin', 'gerente'), ctrl.reajustarPrecos)
+router.put('/migrar-categoria', authorize('admin', 'gerente'), ctrl.migrarCategoria)
 router.get('/:id/historico-preco', authorize('admin', 'gerente', 'estoquista'), param('id').isMongoId().withMessage('ID inválido'), validate, ctrl.historicoPreco)
 router.get('/', ctrl.listar)
 router.get('/alertas', ctrl.alertas)

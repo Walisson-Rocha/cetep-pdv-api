@@ -176,7 +176,12 @@ const registrar = async (req, res) => {
         itens: itensCompletos, subtotal, desconto, total,
         formaPagamento, formasPagamento, troco,
         observacao: observacao.trim(),
-        cpfConsumidor: cpfConsumidor.replace(/\D/g, '').slice(0, 11) || '',
+        // Aceita CPF (11 dígitos) ou CNPJ (14) na nota — cortar em 11 sempre
+        // truncava um CNPJ digitado, corrompendo o documento na NFC-e.
+        cpfConsumidor: (() => {
+          const digits = cpfConsumidor.replace(/\D/g, '')
+          return (digits.length === 11 || digits.length === 14) ? digits : ''
+        })(),
         cliente: clienteId || null,
         colaborador: colaboradorId || null,
         caixa: caixa._id,

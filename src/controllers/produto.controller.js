@@ -174,6 +174,34 @@ const reajustarPrecos = async (req, res) => {
   }
 }
 
+// Move todos os produtos (ativos) de uma categoria de origem pra uma categoria
+// de destino de uma vez só — usado quando o lojista reorganiza/renomeia
+// categorias e já tem produtos cadastrados na antiga.
+const migrarCategoria = async (req, res) => {
+  try {
+    const { categoriaOrigemId, categoriaDestinoId } = req.body
+    if (!categoriaOrigemId || !categoriaDestinoId) {
+      return res.status(400).json({ mensagem: 'Informe a categoria de origem e a de destino' })
+    }
+    if (categoriaOrigemId === categoriaDestinoId) {
+      return res.status(400).json({ mensagem: 'Categoria de origem e destino não podem ser a mesma' })
+    }
+    const resultado = await Produto.updateMany(
+      { categoria: categoriaOrigemId, ativo: true },
+      { categoria: categoriaDestinoId }
+    )
+    await Log.create({
+      usuario: req.user._id, nomeUsuario: req.user.nome,
+      acao: 'categoria_migrada',
+      detalhes: `${resultado.modifiedCount} produto(s) migrados de categoria`,
+    })
+    res.json({ atualizados: resultado.modifiedCount, mensagem: `${resultado.modifiedCount} produto(s) movidos com sucesso` })
+  } catch (error) {
+    logger.error('Erro ao migrar categoria:', error)
+    res.status(500).json({ mensagem: 'Erro ao migrar categoria' })
+  }
+}
+
 const historicoPreco = async (req, res) => {
   try {
     const historico = await HistoricoPreco.find({ produto: req.params.id })
@@ -201,4 +229,4 @@ const fixarCsosn = async (req, res) => {
   }
 }
 
-module.exports = { listar, buscarPorCodigo, buscarPorId, criar, atualizar, deletar, alertas, reajustarPrecos, historicoPreco, fixarCsosn }
+module.exports = { listar, buscarPorCodigo, buscarPorId, criar, atualizar, deletar, alertas, reajustarPrecos, migrarCategoria, historicoPreco, fixarCsosn }
