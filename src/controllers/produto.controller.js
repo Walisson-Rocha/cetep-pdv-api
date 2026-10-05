@@ -21,6 +21,9 @@ const listar = async (req, res) => {
     const produtos = await Produto.find(filtro)
       .populate('categoria', 'nome cor icone')
       .populate('fornecedor', 'nome')
+      // Kit/combo precisa do nome e preço de cada componente pra imprimir o
+      // cupom detalhado (sem isso só dá pra imprimir "1x Kit", sem os itens reais)
+      .populate('componentes.produto', 'nome precoVenda')
       .sort(sortObj)
       .limit(limit * 1)
       .skip((page - 1) * limit)
@@ -39,6 +42,7 @@ const buscarPorCodigo = async (req, res) => {
       $or: [{ codigoBarras: req.params.codigo }, { codigosBarras: req.params.codigo }],
       ativo: true
     }).populate('categoria', 'nome cor icone')
+      .populate('componentes.produto', 'nome precoVenda')
     if (!produto) return res.status(404).json({ mensagem: 'Produto não encontrado' })
     res.json({ produto })
   } catch (error) {

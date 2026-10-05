@@ -457,6 +457,9 @@ const listar = async (req, res) => {
       .populate('cliente', 'nome')
       .populate('colaborador', 'nome')
       .populate('vendedor', 'nome')
+      // Kit/combo precisa saber os componentes atuais pra reimprimir o cupom com
+      // os itens reais, não só "1x Kit" (venda.itens só guarda o produto-kit).
+      .populate({ path: 'itens.produto', select: 'tipo componentes', populate: { path: 'componentes.produto', select: 'nome' } })
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)
