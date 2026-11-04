@@ -251,23 +251,39 @@ const registrar = async (req, res) => {
       }
       // Venda descontada do colaborador — cria Retirada para aparecer na folha
       // Estoque já foi deduzido pela venda acima; Retirada.create direto (sem rota) não deduz novamente
-      if (formaPagamento === 'colaborador' && colaboradorId) {
-        const mes = mesAtualBRT()
-        await Retirada.create([{
-          colaborador: colaboradorId,
-          itens: itensCompletos.map(i => ({
-            produto: i.produto,
-            nomeProduto: i.nomeProduto,
-            quantidade: i.quantidade,
-            precoUnitario: i.precoUnitario,
-            subtotal: i.subtotal,
-          })),
-          total,
-          mes,
-          observacao: `Venda #${venda.numero} — PDV`,
-          registradaPor: req.user._id,
-          vendaOrigem: venda._id,
-        }], { session })
+      if (formaPagamento === 'colaborador') {
+        if (!colaboradorId) {
+          // Isso NUNCA deveria acontecer (formaPagamento=colaborador sem id), mas já
+          // aconteceu silenciosamente em producão (vendas sem retirada correspondente,
+          // descoberto só em auditoria manual semanas depois). Loga alto o suficiente
+          // pra aparecer sozinho se se repetir, em vez de precisar caçar no banco.
+          logger.warn(`ALERTA retirada: venda #${venda.numero} com formaPagamento=colaborador mas colaboradorId ausente/falsy (valor recebido: ${JSON.stringify(colaboradorId)}) — Retirada NÃO foi criada. usuario=${req.user?.nome} vendedorId=${vendedorId}`)
+        } else {
+          const mes = mesAtualBRT()
+          try {
+            const [retiradaCriada] = await Retirada.create([{
+              colaborador: colaboradorId,
+              itens: itensCompletos.map(i => ({
+                produto: i.produto,
+                nomeProduto: i.nomeProduto,
+                quantidade: i.quantidade,
+                precoUnitario: i.precoUnitario,
+                subtotal: i.subtotal,
+              })),
+              total,
+              mes,
+              observacao: `Venda #${venda.numero} — PDV`,
+              registradaPor: req.user._id,
+              vendaOrigem: venda._id,
+            }], { session })
+            logger.info(`Retirada ${retiradaCriada._id} criada pra venda #${venda.numero} (colaborador=${colaboradorId}, mes=${mes}, total=${total})`)
+          } catch (errRetirada) {
+            // Se isso falhar, a transação inteira aborta (venda incluída) -- mas loga
+            // antes de propagar, pra saber exatamente o que quebrou se acontecer de novo.
+            logger.error(`Falha ao criar Retirada da venda #${venda.numero} (colaborador=${colaboradorId}): ${errRetirada.message}`)
+            throw errRetirada
+          }
+        }
       }
       await Caixa.findByIdAndUpdate(caixa._id, {
         $inc: incrementosCaixa(formaPagamento, formasPagamento, total)
