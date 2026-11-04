@@ -347,7 +347,7 @@ router.get('/consumo-todos-colaboradores', authorize('admin', 'gerente'), async 
     if (inicio) filtro.createdAt = { $gte: new Date(inicio) }
     if (fim) filtro.createdAt = { ...(filtro.createdAt || {}), $lte: fimDoDiaBRT(fim) }
 
-    const [colaboradores, retiradas] = await Promise.all([
+    const [colaboradoresAtivos, retiradas] = await Promise.all([
       User.find({ ativo: true }, 'nome email').sort({ nome: 1 }),
       Retirada.find(filtro).populate('colaborador', 'nome email').lean(),
     ])
@@ -367,6 +367,16 @@ router.get('/consumo-todos-colaboradores', authorize('admin', 'gerente'), async 
         porColab[id].itens[nome].valor += item.subtotal || 0
       })
     })
+
+    // Mesmo problema do /folha: quem desligou no meio do período não pode
+    // sumir do relatório — a compra já aconteceu, só não é mais colaborador ativo hoje.
+    const colaboradoresMap = new Map(colaboradoresAtivos.map(c => [c._id.toString(), c]))
+    for (const id of Object.keys(porColab)) {
+      if (!colaboradoresMap.has(id) && porColab[id].colaborador) {
+        colaboradoresMap.set(id, porColab[id].colaborador)
+      }
+    }
+    const colaboradores = Array.from(colaboradoresMap.values())
 
     const resultado = colaboradores.map(col => {
       const dados = porColab[col._id.toString()] || { totalValor: 0, totalItens: 0, qtdRetiradas: 0, itens: {} }

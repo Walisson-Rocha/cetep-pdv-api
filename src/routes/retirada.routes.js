@@ -70,11 +70,24 @@ router.get('/folha', async (req, res) => {
   try {
     const mes = req.query.mes ? parseInt(req.query.mes) : mesAtualBRT()
 
-    const colaboradores = await User.find({ ativo: true }, 'nome email perfil')
-    const [retiradas, quitacoes] = await Promise.all([
+    const [colaboradoresAtivos, retiradas, quitacoes] = await Promise.all([
+      User.find({ ativo: true }, 'nome email perfil'),
       Retirada.find({ mes }).populate('colaborador', 'nome email perfil'),
       QuitacaoFolha.find({ mes }).populate('registradaPor', 'nome'),
     ])
+
+    // Quem foi desligado/desativado no meio do mês não pode sumir da folha
+    // DAQUELE mês — a compra já aconteceu, só a conta dele não está mais
+    // ativa hoje. Junta quem está ativo agora com quem tem retirada nesse
+    // mês (mesmo já desligado), senão o total da folha fica menor que o
+    // que realmente saiu nas formas de pagamento "colaborador".
+    const colaboradoresMap = new Map(colaboradoresAtivos.map(c => [c._id.toString(), c]))
+    for (const r of retiradas) {
+      if (r.colaborador && !colaboradoresMap.has(r.colaborador._id.toString())) {
+        colaboradoresMap.set(r.colaborador._id.toString(), r.colaborador)
+      }
+    }
+    const colaboradores = Array.from(colaboradoresMap.values())
 
     const folha = colaboradores.map(col => {
       const minhas = retiradas.filter(r => r.colaborador?._id.toString() === col._id.toString())
