@@ -40,7 +40,14 @@ function montarEAN(codigoBarras) {
   return 'SEM GTIN'
 }
 
-function montarItems(itens) {
+// A SEFAZ exige que o valor_desconto declarado no topo da nota seja IGUAL à
+// soma do valor_desconto de cada item — não basta informar só o desconto geral
+// (rejeita com "Total do Desconto difere do somatório dos itens"). Distribui o
+// desconto do carrinho proporcionalmente ao peso de cada item no subtotal, e
+// joga a sobra de arredondamento no último item pra bater exato com o total.
+function montarItems(itens, descontoGeral = 0, subtotalGeral = 0) {
+  const temDesconto = descontoGeral > 0 && subtotalGeral > 0
+  let descontoAcumulado = 0
   return itens.map((item, idx) => {
     const p = item.produto || {}
     // CSOSN 400 ("Não tributada") é inválido para venda de balcão — normaliza para 102
@@ -55,6 +62,15 @@ function montarItems(itens) {
     const subtotal = Number((item.precoUnitario * item.quantidade).toFixed(2))
     const ean = montarEAN(p.codigoBarras)
 
+    let valorDesconto = 0
+    if (temDesconto) {
+      const ultimoItem = idx === itens.length - 1
+      valorDesconto = ultimoItem
+        ? Number((descontoGeral - descontoAcumulado).toFixed(2))
+        : Number(((subtotal / subtotalGeral) * descontoGeral).toFixed(2))
+      descontoAcumulado += valorDesconto
+    }
+
     return {
       numero_item:               idx + 1,
       codigo_produto:            String(p.codigoBarras || p._id).slice(-20),
@@ -66,6 +82,7 @@ function montarItems(itens) {
       quantidade_comercial:      item.quantidade,
       valor_unitario_comercial:  item.precoUnitario,
       valor_bruto:               subtotal,
+      ...(valorDesconto > 0 ? { valor_desconto: valorDesconto } : {}),
       unidade_tributavel:        montarUnidade(p.unidade),
       quantidade_tributavel:     item.quantidade,
       valor_unitario_tributavel: item.precoUnitario,
@@ -107,6 +124,11 @@ async function emitir(venda, config, referencia) {
   const razaoSocial = config.razaoSocial || config.nomeLoja || ''
   const email = config.email || ''
 
+  // Arredonda uma vez só e reusa o MESMO valor no topo e na distribuição por
+  // item — se cada lado arredondasse o desconto bruto por conta própria,
+  // podia sair 1 centavo de diferença e a SEFAZ rejeitaria de novo.
+  const descontoNota = Number((venda.desconto || 0).toFixed(2))
+
   const payload = {
     cnpj_emitente:      cnpj,
     ...(razaoSocial ? { nome_emitente: razaoSocial } : {}),
@@ -120,13 +142,13 @@ async function emitir(venda, config, referencia) {
     finalidade_emissao: 1,
     presenca_comprador: 1,
     consumidor_final:   1,
-    items:              montarItems(venda.itens),
+    items:              montarItems(venda.itens, descontoNota, venda.subtotal),
     formas_pagamento:   montarFormasPagamento(venda),
     // Itens vão com o valor cheio (sem desconto) — sem informar o desconto
     // geral do carrinho aqui, a SEFAZ soma os itens e rejeita a nota porque
     // o total dela fica maior que o total realmente pago (venda.total já
     // vem com o desconto aplicado).
-    ...(venda.desconto > 0 ? { valor_desconto: Number(venda.desconto.toFixed(2)) } : {}),
+    ...(descontoNota > 0 ? { valor_desconto: descontoNota } : {}),
   }
 
   // CPF ou CNPJ do consumidor (campo avulso ou do cliente cadastrado) —
