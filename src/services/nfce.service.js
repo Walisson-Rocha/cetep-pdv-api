@@ -122,6 +122,11 @@ async function emitir(venda, config, referencia) {
     consumidor_final:   1,
     items:              montarItems(venda.itens),
     formas_pagamento:   montarFormasPagamento(venda),
+    // Itens vão com o valor cheio (sem desconto) — sem informar o desconto
+    // geral do carrinho aqui, a SEFAZ soma os itens e rejeita a nota porque
+    // o total dela fica maior que o total realmente pago (venda.total já
+    // vem com o desconto aplicado).
+    ...(venda.desconto > 0 ? { valor_desconto: Number(venda.desconto.toFixed(2)) } : {}),
   }
 
   // CPF ou CNPJ do consumidor (campo avulso ou do cliente cadastrado) —
